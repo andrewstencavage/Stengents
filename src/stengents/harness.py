@@ -86,6 +86,31 @@ class Actions:
         return self._act("run_tests", verify)
 
 
+class RunCapturePlugin:
+    """ADK lifecycle capture whose callbacks match ADK's async plugin protocol."""
+
+    def __init__(self, actions: Actions) -> None:
+        from google.adk.plugins.base_plugin import BasePlugin
+
+        class Plugin(BasePlugin):
+            async def before_run_callback(self, *, invocation_context: object) -> None:
+                actions.adk_invocation_id = str(getattr(invocation_context, "invocation_id"))
+
+            async def before_tool_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object) -> None:
+                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "before"})
+
+            async def after_tool_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object, result: dict[str, object]) -> None:
+                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "after"})
+
+            async def on_tool_error_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object, error: Exception) -> None:
+                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "error"})
+
+        self.plugin = Plugin(name="stengents_run_capture")
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.plugin, name)
+
+
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -152,26 +177,6 @@ def adk_driver(*, base_url: str, model_name: str, api_key: str) -> Callable[[Act
         from google.adk.sessions import InMemorySessionService
         from google.genai import types
 
-        class CapturePlugin(BasePlugin):
-            def __init__(self) -> None:
-                super().__init__(name="stengents_run_capture")
-
-            def before_run_callback(self, *, invocation_context: object) -> None:
-                actions.adk_invocation_id = str(getattr(invocation_context, "invocation_id"))
-                return None
-
-            def before_tool_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object) -> None:
-                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "before"})
-                return None
-
-            def after_tool_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object, result: dict[str, object]) -> None:
-                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "after"})
-                return None
-
-            def on_tool_error_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object, error: Exception) -> None:
-                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "error"})
-                return None
-
         agent = LlmAgent(
             name="coding_agent",
             model=LiteLlm(model=f"openai/{model_name}", api_base=f"{base_url.rstrip('/')}/v1", api_key=api_key),
@@ -181,7 +186,7 @@ def adk_driver(*, base_url: str, model_name: str, api_key: str) -> Callable[[Act
         async def invoke() -> None:
             sessions = InMemorySessionService()
             session = await sessions.create_session(app_name="stengents", user_id="local", session_id="run")
-            runner = Runner(app_name="stengents", agent=agent, session_service=sessions, plugins=[CapturePlugin()])
+            runner = Runner(app_name="stengents", agent=agent, session_service=sessions, plugins=[RunCapturePlugin(actions).plugin])
             async for _ in runner.run_async(user_id="local", session_id=session.id, new_message=types.Content(role="user", parts=[types.Part(text="Repair the failing fixture.")])):
                 pass
         remaining = max(1, actions.budget.elapsed_seconds - (time.monotonic() - actions.started))

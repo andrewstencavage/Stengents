@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
-from stengents.harness import Fixture, RunBudget, run_fixture
+from stengents.harness import Actions, Fixture, RunBudget, RunCapturePlugin, run_fixture
+
+
+def test_run_capture_plugin_callbacks_are_awaitable(tmp_path: Path) -> None:
+    fixture = Fixture("fixture", tmp_path, ("source.py",), (sys.executable, "-c", ""))
+    actions = Actions(tmp_path, fixture, RunBudget(), 0)
+    plugin = RunCapturePlugin(actions)
+
+    asyncio.run(plugin.before_run_callback(invocation_context=SimpleNamespace(invocation_id="invocation-1")))
+
+    assert actions.adk_invocation_id == "invocation-1"
 
 
 def test_run_fixture_writes_a_passing_record_after_the_agent_repairs_the_source(
