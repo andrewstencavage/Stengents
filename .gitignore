@@ -1,0 +1,5 @@
+.venv/
+.stengents/
+__pycache__/
+*.py[cod]
+.env
