@@ -16,21 +16,22 @@ python -m pip install -e . pytest
 ```
 
 The development-time model is served on `gym` and remains loopback-only there.
+Configure this shell once so future runs need no environment setup. Do not add a
+real API token to your shell profile:
+
+```bash
+printf '\n# Stengents local model\nexport STENGENTS_MODEL_BASE_URL=http://127.0.0.1:11434\nexport STENGENTS_MODEL_NAME=llama3.1:8b\nexport STENGENTS_MODEL_API_KEY=local\nalias stengents-gym-tunnel='\''ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -N -L 127.0.0.1:11434:127.0.0.1:11434 gym'\''\n' >> ~/.zshrc && source ~/.zshrc
+```
+
 In a second terminal, start the SSH forward and leave it running:
 
 ```bash
-ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -N \
-  -L 127.0.0.1:11434:127.0.0.1:11434 gym
+stengents-gym-tunnel
 ```
 
-Configure the local OpenAI-compatible endpoint in your shell. Do not commit
-these settings or any real API token:
-
-```bash
-export STENGENTS_MODEL_BASE_URL=http://127.0.0.1:11434
-export STENGENTS_MODEL_NAME=llama3.1:8b
-export STENGENTS_MODEL_API_KEY=local
-```
+If the tunnel command reports that port `11434` is already in use, a tunnel is
+usually already running. Leave it alone and run the fixture; only start a new
+tunnel after the existing listener stops.
 
 Run the first fixture:
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import shutil
@@ -50,6 +49,9 @@ class Actions:
             raise ValueError("path must remain inside the fixture")
         return candidate
 
+    def _fixture_relative_path(self, path: str) -> str:
+        return self._path(path).relative_to(self.root.resolve()).as_posix()
+
     def _act(self, name: str, operation: Callable[[], T]) -> T:
         if len(self.events) >= self.budget.action_limit:
             raise RunBudgetExceeded("run action budget exhausted")
@@ -69,13 +71,19 @@ class Actions:
         return self._act("list_files", lambda: sorted(str(path.relative_to(self.root)) for path in self.root.rglob("*") if path.is_file()))
 
     def read_file(self, path: str) -> str:
-        return self._act("read_file", lambda: self._path(path).read_text())
+        return self._act("read_file", lambda: self._path(self._fixture_relative_path(path)).read_text())
 
     def write_source_file(self, path: str, content: str) -> str:
-        if path not in self.fixture.source_surface:
-            raise PermissionError(f"{path} is not in the fixture source surface")
+        """Write only an allowlisted source file; rejected paths are returned to the agent."""
         def write() -> str:
-            self._path(path).write_text(content)
+            try:
+                relative_path = self._fixture_relative_path(path)
+            except ValueError as error:
+                return f"rejected: {error}"
+            if relative_path not in self.fixture.source_surface:
+                allowed_paths = ", ".join(self.fixture.source_surface)
+                return f"rejected: {path} is not in the fixture source surface; only {allowed_paths} may be changed"
+            self._path(relative_path).write_text(content)
             return "written"
         return self._act("write_source_file", write)
 
@@ -84,31 +92,6 @@ class Actions:
             completed = subprocess.run(self.fixture.verifier, cwd=self.root, capture_output=True, text=True, timeout=self.budget.elapsed_seconds, check=False)
             return {"exit_code": completed.returncode, "passed": completed.returncode == 0}
         return self._act("run_tests", verify)
-
-
-class RunCapturePlugin:
-    """ADK lifecycle capture whose callbacks match ADK's async plugin protocol."""
-
-    def __init__(self, actions: Actions) -> None:
-        from google.adk.plugins.base_plugin import BasePlugin
-
-        class Plugin(BasePlugin):
-            async def before_run_callback(self, *, invocation_context: object) -> None:
-                actions.adk_invocation_id = str(getattr(invocation_context, "invocation_id"))
-
-            async def before_tool_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object) -> None:
-                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "before"})
-
-            async def after_tool_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object, result: dict[str, object]) -> None:
-                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "after"})
-
-            async def on_tool_error_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object, error: Exception) -> None:
-                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "error"})
-
-        self.plugin = Plugin(name="stengents_run_capture")
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(self.plugin, name)
 
 
 def _digest(path: Path) -> str:
@@ -132,7 +115,7 @@ def run_fixture(
     verification: dict[str, object] = {"command": list(fixture.verifier), "exit_code": None, "passed": False}
     with tempfile.TemporaryDirectory(prefix=f"stengents-{fixture.identifier}-") as workspace:
         root = Path(workspace) / fixture.identifier
-        shutil.copytree(fixture.root, root)
+        shutil.copytree(fixture.root, root, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         actions = Actions(root, fixture, budget, started)
         try:
             agent_driver(actions)
@@ -165,33 +148,3 @@ def run_fixture(
     if verification["passed"]:
         return record_path, 0
     return record_path, 2 if verification.get("harness_failed") else 1
-
-
-def adk_driver(*, base_url: str, model_name: str, api_key: str) -> Callable[[Actions], None]:
-    """Create the one ADK coding agent over the portable LiteLLM adapter."""
-    def drive(actions: Actions) -> None:
-        from google.adk.agents import LlmAgent
-        from google.adk.models.lite_llm import LiteLlm
-        from google.adk.plugins.base_plugin import BasePlugin
-        from google.adk.runners import Runner
-        from google.adk.sessions import InMemorySessionService
-        from google.genai import types
-
-        agent = LlmAgent(
-            name="coding_agent",
-            model=LiteLlm(model=f"openai/{model_name}", api_base=f"{base_url.rstrip('/')}/v1", api_key=api_key),
-            instruction="Repair the fixture using only the named actions. Run tests before you finish.",
-            tools=[actions.list_files, actions.read_file, actions.write_source_file, actions.run_tests],
-        )
-        async def invoke() -> None:
-            sessions = InMemorySessionService()
-            session = await sessions.create_session(app_name="stengents", user_id="local", session_id="run")
-            runner = Runner(app_name="stengents", agent=agent, session_service=sessions, plugins=[RunCapturePlugin(actions).plugin])
-            async for _ in runner.run_async(user_id="local", session_id=session.id, new_message=types.Content(role="user", parts=[types.Part(text="Repair the failing fixture.")])):
-                pass
-        remaining = max(1, actions.budget.elapsed_seconds - (time.monotonic() - actions.started))
-        try:
-            asyncio.run(asyncio.wait_for(invoke(), timeout=remaining))
-        except TimeoutError as error:
-            raise RunBudgetExceeded("run elapsed-time budget exhausted") from error
-    return drive

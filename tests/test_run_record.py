@@ -3,10 +3,19 @@ from __future__ import annotations
 import json
 import asyncio
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
-from stengents.harness import Actions, Fixture, RunBudget, RunCapturePlugin, run_fixture
+import pytest
+
+from stengents.coding_agent.agent import RunCapturePlugin, _agent_instruction, _required_discovery_tool
+from stengents.harness import (
+    Actions,
+    Fixture,
+    RunBudget,
+    run_fixture,
+)
 
 
 def test_run_capture_plugin_callbacks_are_awaitable(tmp_path: Path) -> None:
@@ -47,6 +56,7 @@ def test_run_fixture_writes_a_passing_record_after_the_agent_repairs_the_source(
     )
 
     def repair(actions) -> None:
+        actions.list_files()
         actions.read_file("normalize_index.py")
         actions.write_source_file(
             "normalize_index.py",
@@ -71,6 +81,7 @@ def test_run_fixture_writes_a_passing_record_after_the_agent_repairs_the_source(
     assert record["fixture"]["id"] == "normalize-index"
     assert record["model"] == {"provider": "openai-compatible", "name": "test-model"}
     assert [event["name"] for event in record["tool_events"]] == [
+        "list_files",
         "read_file",
         "write_source_file",
         "run_tests",
@@ -81,6 +92,51 @@ def test_run_fixture_writes_a_passing_record_after_the_agent_repairs_the_source(
         "passed": True,
     }
     assert record["artifacts"][0]["path"] == "normalize_index.py"
+
+
+def test_write_rejects_paths_outside_the_source_surface(tmp_path: Path) -> None:
+    source = tmp_path / "source.py"
+    source.write_text("value = 1\n")
+    fixture = Fixture("fixture", tmp_path, ("source.py",), (sys.executable, "-c", ""))
+    actions = Actions(tmp_path, fixture, RunBudget(), time.monotonic())
+
+    assert actions.write_source_file("other.py", "value = 2\n") == (
+        "rejected: other.py is not in the fixture source surface; only source.py may be changed"
+    )
+
+
+def test_write_accepts_a_normalized_variant_of_an_allowlisted_path(tmp_path: Path) -> None:
+    source = tmp_path / "source.py"
+    source.write_text("value = 1\n")
+    fixture = Fixture("fixture", tmp_path, ("source.py",), (sys.executable, "-c", ""))
+    actions = Actions(tmp_path, fixture, RunBudget(), time.monotonic())
+
+    assert actions.write_source_file("./source.py", "value = 2\n") == "written"
+
+
+def test_agent_instruction_names_the_fixture_and_editable_source_surface(tmp_path: Path) -> None:
+    fixture = Fixture("normalize-index", tmp_path, ("normalize_index.py",), (sys.executable, "-c", ""))
+
+    instruction = _agent_instruction(fixture)
+
+    assert "normalize-index" in instruction
+    assert "normalize_index.py" in instruction
+    assert "list_files" in instruction
+    assert "read_file" in instruction
+    assert "Tests are immutable" in instruction
+    assert "upper-bound index check" in instruction
+
+
+def test_required_discovery_tool_forces_listing_then_reading(tmp_path: Path) -> None:
+    (tmp_path / "source.py").write_text("value = 1\n")
+    fixture = Fixture("fixture", tmp_path, ("source.py",), (sys.executable, "-c", ""))
+    actions = Actions(tmp_path, fixture, RunBudget(), time.monotonic())
+
+    assert _required_discovery_tool(actions) == "list_files"
+    actions.list_files()
+    assert _required_discovery_tool(actions) == "read_file"
+    actions.read_file("source.py")
+    assert _required_discovery_tool(actions) is None
 
 
 def test_run_fixture_distinguishes_a_harness_error_from_a_fixture_failure(tmp_path: Path) -> None:

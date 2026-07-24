@@ -8,7 +8,8 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from .harness import Fixture, adk_driver, run_fixture
+from .coding_agent import adk_driver
+from .harness import Fixture, run_fixture
 
 
 def _fixture(identifier: str) -> Fixture:
@@ -27,13 +28,18 @@ def _preflight(base_url: str, model: str) -> None:
         raise RuntimeError("configured_model_missing")
     payload = json.dumps({"model": model, "messages": [{"role": "user", "content": "Call list_files."}], "tools": [{"type": "function", "function": {"name": "list_files", "description": "list files", "parameters": {"type": "object", "properties": {}}}}], "tool_choice": "required"}).encode()
     request = Request(f"{base_url.rstrip('/')}/v1/chat/completions", data=payload, headers={"Content-Type": "application/json"})
-    try:
-        with urlopen(request, timeout=5) as response:
-            result = json.load(response)
-        if not result["choices"][0]["message"].get("tool_calls"):
-            raise ValueError("no tool call")
-    except (URLError, TimeoutError, OSError, KeyError, IndexError, ValueError) as error:
-        raise RuntimeError(f"tool_call_incompatible: {type(error).__name__}") from error
+    last_error: Exception | None = None
+    for _ in range(3):
+        try:
+            with urlopen(request, timeout=30) as response:
+                result = json.load(response)
+            if result["choices"][0]["message"].get("tool_calls"):
+                return
+            last_error = ValueError("no tool call")
+        except (URLError, TimeoutError, OSError, KeyError, IndexError, ValueError) as error:
+            last_error = error
+    assert last_error is not None
+    raise RuntimeError(f"tool_call_incompatible: {type(last_error).__name__}") from last_error
 
 
 def main(argv: list[str] | None = None) -> int:
