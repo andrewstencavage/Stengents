@@ -1,5 +1,7 @@
 .venv/
 .stengents/
+.adk/
+.pytest_cache/
 __pycache__/
 *.py[cod]
 .env
