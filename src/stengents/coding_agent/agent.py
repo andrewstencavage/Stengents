@@ -7,6 +7,7 @@ import time
 from typing import Callable
 
 from ..harness import Actions, Fixture, RunBudgetExceeded
+from ..model_source import ModelConnection
 
 
 class RunCapturePlugin:
@@ -54,16 +55,15 @@ def _required_discovery_tool(actions: Actions) -> str | None:
     return None
 
 
-def adk_driver(*, base_url: str, model_name: str, api_key: str) -> Callable[[Actions], None]:
+def adk_driver(connection: ModelConnection) -> Callable[[Actions], None]:
     """Create the coding agent over the portable LiteLLM adapter."""
     def drive(actions: Actions) -> None:
         from google.adk.agents import LlmAgent
-        from google.adk.models.lite_llm import LiteLlm
         from google.adk.runners import Runner
         from google.adk.sessions import InMemorySessionService
         from google.genai import types
 
-        model = LiteLlm(model=f"openai/{model_name}", api_base=f"{base_url.rstrip('/')}/v1", api_key=api_key)
+        model = connection.llm
 
         def require_discovery_tool(*, callback_context: object, llm_request: object) -> None:
             required_tool = _required_discovery_tool(actions)
