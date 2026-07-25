@@ -34,8 +34,9 @@ shapes), timing, the answer, and an **operational outcome** — `completed`,
 `no_answer` — capturing whether the exchange *ran cleanly*, not whether the
 answer was correct (answer quality is a later, separate concern).
 
-Capture is wired through the agent's callbacks in `agent.py` via
-[`turn_log.TurnLogger`](turn_log.py), so it works under `adk run` and `adk web`.
+Capture is wired through the agent's callbacks in `agent.py` via the shared
+[`stengents.utilities.turn_log.TurnLogger`](../../stengents/utilities/turn_log.py),
+so it works under `adk run` and `adk web`.
 Record-building and the result reducer are pure and unit-tested. To review
 outcomes:
 
@@ -64,7 +65,7 @@ default model name).
 ## Configuration
 
 - `KILN_BASE_URL` — Kiln's base URL. Defaults to `http://192.168.40.161:4173`.
-- Model connection resolves through `stengents.model_source`: `STENGENTS_MODEL_*`,
+- Model connection resolves through `stengents.utilities.model_source`: `STENGENTS_MODEL_*`,
   falling back to the local `gym` defaults. The model still runs loopback-only on
   `gym`, so its tunnel to `11434` must be up.
 

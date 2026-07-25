@@ -7,12 +7,14 @@ Session summaries, which map onto Kiln's existing plan and strategy surfaces.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from google.adk.agents import LlmAgent
 from google.genai import types
 
-from stengents.model_source import resolve_model
+from stengents.utilities.model_source import resolve_model
+from stengents.utilities.turn_log import TurnLogger
 from .kiln_client import compact_sessions, fetch_sessions
-from .turn_log import TurnLogger
 
 MODEL = resolve_model("qwen2.5:7b-8k")
 
@@ -32,7 +34,7 @@ def get_workouts() -> dict:
     return {"workout_count": len(workouts), "workouts": workouts}
 
 
-_turn_logger = TurnLogger(model=MODEL.as_record())
+_turn_logger = TurnLogger(model=MODEL.as_record(), log_path=Path(".stengents/kiln_coach/turns.jsonl"))
 
 
 root_agent = LlmAgent(

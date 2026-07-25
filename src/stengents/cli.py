@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .coding_agent import adk_driver
 from .harness import Fixture, run_fixture
-from .model_source import ModelSourceUnavailable, resolve_model
+from .utilities.model_source import ModelSourceUnavailable, resolve_model
 
 
 def _fixture(identifier: str) -> Fixture:

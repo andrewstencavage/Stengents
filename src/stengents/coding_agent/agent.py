@@ -7,7 +7,7 @@ import time
 from typing import Callable
 
 from ..harness import Actions, Fixture, RunBudgetExceeded
-from ..model_source import ModelConnection
+from ..utilities.model_source import ModelConnection
 
 
 class RunCapturePlugin:

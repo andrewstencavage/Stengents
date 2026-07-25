@@ -21,7 +21,7 @@ adk run src/farm_system/hello_world
 ```
 
 `hello_world/agent.py` exports the standard ADK `root_agent`. It resolves the
-development-time model source through `stengents.model_source`, reading
+development-time model source through `stengents.utilities.model_source`, reading
 `STENGENTS_MODEL_BASE_URL`, `STENGENTS_MODEL_NAME`, and
 `STENGENTS_MODEL_API_KEY` when present, or the local `gym` defaults.
 

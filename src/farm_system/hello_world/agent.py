@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from google.adk.agents import LlmAgent
 
-from stengents.model_source import resolve_model
+from stengents.utilities.model_source import resolve_model
 
 
 MODEL = resolve_model("llama3.1:8b")
