@@ -8,9 +8,9 @@ JSON line to a Turn log, giving a queryable record of what happened and its
 verification-based outcome: a Turn records whether the exchange *ran cleanly*,
 not whether an answer was *correct*.
 
-``build_turn_record`` and ``reduce_value`` are pure and unit-tested; the
-``TurnLogger`` methods are the thin ADK-callback shell that fills a per-Turn
-buffer and appends the line.
+``build_turn_record`` is pure and unit-tested; the ``TurnLogger`` methods are the
+thin ADK-callback shell that fills a per-Turn buffer and appends the line. The
+payload reducer lives in :mod:`stengents.utilities.observation`.
 """
 
 from __future__ import annotations
@@ -21,27 +21,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-DEFAULT_LOG_PATH = Path(".stengents/kiln_coach/turns.jsonl")
-MAX_STRING = 200
+from .observation import reduce_value
 
-
-def reduce_value(value: object, *, depth: int = 0, max_string: int = MAX_STRING) -> object:
-    """Shrink a value for logging: scalars verbatim, collections collapsed to counts.
-
-    Keeps the useful signal (scalar field values, shapes) while never storing a
-    large payload. Recurses one level into a top-level dict, then collapses.
-    """
-    if isinstance(value, str):
-        return value if len(value) <= max_string else value[:max_string] + f"…(+{len(value) - max_string})"
-    if isinstance(value, bool) or isinstance(value, int) or isinstance(value, float) or value is None:
-        return value
-    if isinstance(value, list) or isinstance(value, tuple):
-        return f"[{len(value)} items]"
-    if isinstance(value, dict):
-        if depth >= 1:
-            return f"{{{len(value)} keys}}"
-        return {str(key): reduce_value(item, depth=depth + 1, max_string=max_string) for key, item in value.items()}
-    return reduce_value(str(value), depth=depth, max_string=max_string)
+DEFAULT_LOG_PATH = Path(".stengents/turns.jsonl")
 
 
 def build_turn_record(

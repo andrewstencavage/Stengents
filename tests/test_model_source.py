@@ -6,7 +6,7 @@ from urllib.request import Request
 
 import pytest
 
-from stengents.model_source import ModelConnection, ModelSourceUnavailable, resolve_model
+from stengents.utilities.model_source import ModelConnection, ModelSourceUnavailable, resolve_model
 
 
 # --- resolution ---------------------------------------------------------
