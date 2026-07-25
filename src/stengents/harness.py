@@ -71,7 +71,17 @@ class Actions:
         return self._act("list_files", lambda: sorted(str(path.relative_to(self.root)) for path in self.root.rglob("*") if path.is_file()))
 
     def read_file(self, path: str) -> str:
-        return self._act("read_file", lambda: self._path(self._fixture_relative_path(path)).read_text())
+        """Read a fixture file; out-of-fixture or missing paths are returned to the agent."""
+        def read() -> str:
+            try:
+                relative_path = self._fixture_relative_path(path)
+            except ValueError:
+                return f"rejected: {path} is outside the fixture; call list_files to see the readable paths"
+            try:
+                return self._path(relative_path).read_text()
+            except FileNotFoundError:
+                return f"rejected: {path} does not exist in the fixture; call list_files to see the readable paths"
+        return self._act("read_file", read)
 
     def write_source_file(self, path: str, content: str) -> str:
         """Write only an allowlisted source file; rejected paths are returned to the agent."""

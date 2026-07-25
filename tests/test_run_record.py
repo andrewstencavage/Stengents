@@ -105,6 +105,46 @@ def test_write_rejects_paths_outside_the_source_surface(tmp_path: Path) -> None:
     )
 
 
+def test_read_returns_a_rejection_for_a_path_outside_the_fixture(tmp_path: Path) -> None:
+    (tmp_path / "source.py").write_text("value = 1\n")
+    fixture = Fixture("fixture", tmp_path, ("source.py",), (sys.executable, "-c", ""))
+    actions = Actions(tmp_path, fixture, RunBudget(), time.monotonic())
+
+    assert actions.read_file("../escape.py") == (
+        "rejected: ../escape.py is outside the fixture; call list_files to see the readable paths"
+    )
+    assert actions.events[-1]["outcome"] == "ok"
+
+
+def test_read_returns_a_rejection_for_a_missing_fixture_file(tmp_path: Path) -> None:
+    (tmp_path / "source.py").write_text("value = 1\n")
+    fixture = Fixture("fixture", tmp_path, ("source.py",), (sys.executable, "-c", ""))
+    actions = Actions(tmp_path, fixture, RunBudget(), time.monotonic())
+
+    assert actions.read_file("missing.py") == (
+        "rejected: missing.py does not exist in the fixture; call list_files to see the readable paths"
+    )
+
+
+def test_a_model_reading_a_bad_path_is_not_a_harness_failure(tmp_path: Path) -> None:
+    fixture_root = tmp_path / "fixture"
+    fixture_root.mkdir()
+    (fixture_root / "normalize_index.py").write_text("pass\n")
+    fixture = Fixture("normalize-index", fixture_root, ("normalize_index.py",), (sys.executable, "-c", "raise SystemExit(1)"))
+
+    def agent_reads_outside_the_fixture(actions) -> None:
+        actions.read_file("/etc/passwd")
+
+    record_path, exit_code = run_fixture(
+        fixture, run_directory=tmp_path / "runs", model_name="test-model", agent_driver=agent_reads_outside_the_fixture
+    )
+
+    verification = json.loads(record_path.read_text())["verification"]
+    assert "harness_failed" not in verification
+    assert verification["passed"] is False
+    assert exit_code == 1
+
+
 def test_write_accepts_a_normalized_variant_of_an_allowlisted_path(tmp_path: Path) -> None:
     source = tmp_path / "source.py"
     source.write_text("value = 1\n")
