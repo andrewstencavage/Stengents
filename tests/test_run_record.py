@@ -16,6 +16,7 @@ from stengents.harness import (
     RunBudget,
     run_fixture,
 )
+from stengents.run_record import RunOutcome, build_run_record, derive_outcome
 
 
 def test_run_capture_plugin_callbacks_are_awaitable(tmp_path: Path) -> None:
@@ -77,7 +78,8 @@ def test_run_fixture_writes_a_passing_record_after_the_agent_repairs_the_source(
 
     record = json.loads(record_path.read_text())
     assert exit_code == 0
-    assert record["schema_version"] == 1
+    assert record["schema_version"] == 2
+    assert record["outcome"] == "passed"
     assert record["fixture"]["id"] == "normalize-index"
     assert record["model"] == {"provider": "openai-compatible", "name": "test-model"}
     assert [event["name"] for event in record["tool_events"]] == [
@@ -194,3 +196,77 @@ def test_run_fixture_distinguishes_a_harness_error_from_a_fixture_failure(tmp_pa
 
     assert exit_code == 2
     assert json.loads(record_path.read_text())["verification"]["harness_failed"] is True
+
+
+# --- The Run record as a deep module: pure shape + outcome derivation --------
+
+
+def _verification(**overrides: object) -> dict[str, object]:
+    verification: dict[str, object] = {"command": ["true"], "exit_code": None, "passed": False}
+    verification.update(overrides)
+    return verification
+
+
+def test_outcome_exit_codes_follow_the_adr_0002_taxonomy() -> None:
+    assert RunOutcome.PASSED.exit_code == 0
+    assert RunOutcome.FAILED.exit_code == 1
+    assert RunOutcome.HARNESS_FAILED.exit_code == 2
+    for outcome in RunOutcome:
+        assert RunOutcome.from_exit_code(outcome.exit_code) is outcome
+
+
+def test_derive_outcome_treats_a_passing_verification_as_passed() -> None:
+    assert derive_outcome(_verification(exit_code=0, passed=True)) is RunOutcome.PASSED
+
+
+def test_derive_outcome_treats_an_exhausted_budget_as_a_model_failure_not_a_harness_failure() -> None:
+    verification = _verification(error="run action budget exhausted", budget_exhausted=True)
+    assert derive_outcome(verification) is RunOutcome.FAILED
+
+
+def test_derive_outcome_treats_a_rejected_verifier_as_failed() -> None:
+    assert derive_outcome(_verification(exit_code=1, passed=False)) is RunOutcome.FAILED
+
+
+def test_derive_outcome_treats_a_flagged_harness_fault_as_harness_failed() -> None:
+    verification = _verification(error="model unavailable", harness_failed=True)
+    assert derive_outcome(verification) is RunOutcome.HARNESS_FAILED
+
+
+def test_build_run_record_stores_the_derived_outcome_and_full_shape() -> None:
+    record, outcome = build_run_record(
+        run_id="run-1",
+        started_at="2026-07-25T00:00:00Z",
+        duration_ms=12,
+        fixture={"id": "normalize-index", "revision": "abc"},
+        adk={"invocation_id": "inv-1", "agent": "coding_agent", "tool_lifecycle_events": []},
+        model={"provider": "openai-compatible", "name": "test-model"},
+        tool_events=[{"name": "run_tests", "outcome": "ok"}],
+        artifacts=[{"path": "normalize_index.py", "sha256": "def"}],
+        verification=_verification(exit_code=0, passed=True),
+    )
+
+    assert outcome is RunOutcome.PASSED
+    assert record["schema_version"] == 2
+    assert record["outcome"] == "passed"
+    assert record["run_id"] == "run-1"
+    assert record["harness"] == {"id": "stengents", "revision": "working-tree"}
+    assert record["fixture"] == {"id": "normalize-index", "revision": "abc"}
+    assert record["verification"]["passed"] is True
+
+
+def test_build_run_record_reports_harness_failed_when_flagged() -> None:
+    _record, outcome = build_run_record(
+        run_id="run-2",
+        started_at="2026-07-25T00:00:00Z",
+        duration_ms=1,
+        fixture={"id": "normalize-index", "revision": "abc"},
+        adk={"invocation_id": None, "agent": "coding_agent", "tool_lifecycle_events": []},
+        model={"provider": "openai-compatible", "name": "test-model"},
+        tool_events=[],
+        artifacts=[],
+        verification=_verification(error="model unavailable", harness_failed=True),
+    )
+
+    assert outcome is RunOutcome.HARNESS_FAILED
+    assert outcome.exit_code == 2

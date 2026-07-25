@@ -35,7 +35,7 @@ of this repository's harness or deterministic coding fixture.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "run_id": "uuid",
   "started_at": "2026-07-22T18:40:00Z",
   "duration_ms": 8421,
@@ -47,6 +47,7 @@ of this repository's harness or deterministic coding fixture.
     {"name": "read_file", "started_offset_ms": 34, "duration_ms": 2, "outcome": "ok"}
   ],
   "artifacts": [{"path": "src/parser.py", "sha256": "..."}],
+  "outcome": "passed",
   "verification": {"command": "pytest -q", "exit_code": 0, "passed": true}
 }
 ```
