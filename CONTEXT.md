@@ -56,6 +56,10 @@ _Avoid_: fixture ID, log filename
 The process-level result of a run invocation: `0` for deterministic verification pass, `1` for a completed deterministic failure, and a default distinct nonzero status when the harness cannot complete a valid run.
 _Avoid_: model response, tool outcome
 
+**Harness-failure boundary**:
+The rule that a run is recorded as harness-failed if and only if the harness itself failed, never because the agent under test misbehaved. Agent misuse of a named action returns a `rejected: …` result and lands as a deterministic failure; it never crashes the run or reads as a harness fault. See `docs/adr/0002-run-outcome-taxonomy.md`.
+_Avoid_: sandbox escape, crash
+
 **Run announcement**:
 The credential-free machine-readable startup line that identifies a run, its fixture, resolved model/provider, fixed budgets, and intended run-record path.
 _Avoid_: console log, endpoint configuration
