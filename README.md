@@ -16,27 +16,39 @@ python -m pip install -e . pytest
 ```
 
 The development-time model is served on `gym` and remains loopback-only there.
-Configure this shell once so future runs need no environment setup. Do not add a
-real API token to your shell profile:
+Load the connection into your shell with the provided script — it sets only the
+stable base URL and API key, writes nothing to your shell profile, and never
+pins a model. Run it without `eval` first to inspect exactly what it sets:
 
 ```bash
-printf '\n# Stengents local model\nexport STENGENTS_MODEL_BASE_URL=http://127.0.0.1:11434\nexport STENGENTS_MODEL_NAME=llama3.1:8b\nexport STENGENTS_MODEL_API_KEY=local\nalias stengents-gym-tunnel='\''ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -N -L 127.0.0.1:11434:127.0.0.1:11434 gym'\''\n' >> ~/.zshrc && source ~/.zshrc
+eval "$(scripts/stengents-env.sh)"
 ```
 
-In a second terminal, start the SSH forward and leave it running:
+In a second terminal, start the SSH forward and leave it running. One tunnel
+serves every model, so you never need a second one:
 
 ```bash
-stengents-gym-tunnel
+scripts/gym-tunnel
 ```
 
 If the tunnel command reports that port `11434` is already in use, a tunnel is
 usually already running. Leave it alone and run the fixture; only start a new
 tunnel after the existing listener stops.
 
-Run the first fixture:
+Run the first fixture, choosing the model per run with `--model` (falling back
+to `STENGENTS_MODEL_NAME` if you prefer to set it in the environment):
 
 ```bash
-stengents run normalize-index
+stengents run normalize-index --model llama3.1:8b
+```
+
+The endpoint selects models by name per request, so running several models is
+just a matter of changing the flag — no extra tunnels or endpoints:
+
+```bash
+for model in llama3.1:8b qwen2.5:7b-8k; do
+  stengents run normalize-index --model "$model"
+done
 ```
 
 The command first verifies the tunnel, selected model, and required tool-call

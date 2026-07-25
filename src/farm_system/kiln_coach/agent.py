@@ -7,27 +7,14 @@ Session summaries, which map onto Kiln's existing plan and strategy surfaces.
 
 from __future__ import annotations
 
-import os
-
 from google.adk.agents import LlmAgent
-from google.adk.models.lite_llm import LiteLlm
 from google.genai import types
 
+from ..model import resolve_model
 from .kiln_client import compact_sessions, fetch_sessions
 from .turn_log import TurnLogger
 
-MODEL_BASE_URL = os.environ.get(
-    "FARM_SYSTEM_MODEL_BASE_URL",
-    os.environ.get("STENGENTS_MODEL_BASE_URL", "http://127.0.0.1:11434"),
-)
-MODEL_NAME = os.environ.get(
-    "FARM_SYSTEM_MODEL_NAME",
-    os.environ.get("STENGENTS_MODEL_NAME", "qwen2.5:7b-8k"),
-)
-MODEL_API_KEY = os.environ.get(
-    "FARM_SYSTEM_MODEL_API_KEY",
-    os.environ.get("STENGENTS_MODEL_API_KEY", "local"),
-)
+MODEL = resolve_model("qwen2.5:7b-8k")
 
 
 def get_workouts() -> dict:
@@ -45,17 +32,13 @@ def get_workouts() -> dict:
     return {"workout_count": len(workouts), "workouts": workouts}
 
 
-_turn_logger = TurnLogger(model={"provider": "openai-compatible", "name": MODEL_NAME})
+_turn_logger = TurnLogger(model={"provider": "openai-compatible", "name": MODEL.name})
 
 
 root_agent = LlmAgent(
     name="kiln_coach",
     description="Reads your Kiln training history to answer questions about past workouts.",
-    model=LiteLlm(
-        model=f"openai/{MODEL_NAME}",
-        api_base=f"{MODEL_BASE_URL.rstrip('/')}/v1",
-        api_key=MODEL_API_KEY,
-    ),
+    model=MODEL.llm,
     instruction=(
         "You are Kiln Coach, an assistant for a single athlete's strength training. "
         "Call get_workouts to read their completed workouts. A workout is one completed "
