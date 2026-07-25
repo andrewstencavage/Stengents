@@ -42,18 +42,45 @@ def _preflight(base_url: str, model: str) -> None:
     raise RuntimeError(f"tool_call_incompatible: {type(last_error).__name__}") from last_error
 
 
+_USAGE = "usage: stengents run <fixture-id> [--model <name>]"
+
+
+def _parse(arguments: list[str]) -> tuple[list[str], str | None]:
+    positional: list[str] = []
+    model_override: str | None = None
+    index = 0
+    while index < len(arguments):
+        token = arguments[index]
+        if token in ("--model", "-m"):
+            index += 1
+            if index >= len(arguments):
+                raise ValueError("--model requires a value")
+            model_override = arguments[index]
+        elif token.startswith("--model="):
+            model_override = token[len("--model=") :]
+        else:
+            positional.append(token)
+        index += 1
+    return positional, model_override
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
-    if len(arguments) != 2 or arguments[0] != "run":
-        print("usage: stengents run <fixture-id>", file=sys.stderr)
+    try:
+        positional, model_override = _parse(arguments)
+    except ValueError:
+        print(_USAGE, file=sys.stderr)
+        return 2
+    if len(positional) != 2 or positional[0] != "run":
+        print(_USAGE, file=sys.stderr)
         return 2
     base_url = os.environ.get("STENGENTS_MODEL_BASE_URL")
-    model = os.environ.get("STENGENTS_MODEL_NAME")
+    model = model_override or os.environ.get("STENGENTS_MODEL_NAME")
     if not base_url or not model:
-        print("preflight failed: model_endpoint_unavailable; detail=STENGENTS_MODEL_BASE_URL and STENGENTS_MODEL_NAME are required", file=sys.stderr)
+        print("preflight failed: model_endpoint_unavailable; detail=STENGENTS_MODEL_BASE_URL and a model (via --model or STENGENTS_MODEL_NAME) are required", file=sys.stderr)
         return 2
     try:
-        fixture = _fixture(arguments[1])
+        fixture = _fixture(positional[1])
         _preflight(base_url, model)
     except RuntimeError as error:
         print(f"preflight failed: {error}; endpoint={base_url}; model={model}", file=sys.stderr)

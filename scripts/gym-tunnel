@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Forward the loopback-only model endpoint on `gym` to 127.0.0.1:11434 locally.
+# Leave this running in its own terminal while you run fixtures.
+#
+#     scripts/gym-tunnel
+#
+# One tunnel serves every model — the endpoint selects models by name per
+# request, so you never need a second tunnel to run a different model.
+#
+# If it reports that port 11434 is already in use, a tunnel is usually already
+# up. Leave it alone; only start a new one after the existing listener stops.
+set -euo pipefail
+
+exec ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -N \
+    -L 127.0.0.1:11434:127.0.0.1:11434 gym
