@@ -10,7 +10,7 @@ from __future__ import annotations
 from google.adk.agents import LlmAgent
 from google.genai import types
 
-from ..model import resolve_model
+from stengents.model_source import resolve_model
 from .kiln_client import compact_sessions, fetch_sessions
 from .turn_log import TurnLogger
 
@@ -32,7 +32,7 @@ def get_workouts() -> dict:
     return {"workout_count": len(workouts), "workouts": workouts}
 
 
-_turn_logger = TurnLogger(model={"provider": "openai-compatible", "name": MODEL.name})
+_turn_logger = TurnLogger(model=MODEL.as_record())
 
 
 root_agent = LlmAgent(

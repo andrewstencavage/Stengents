@@ -58,14 +58,15 @@ Fix: run a model with a larger context. On gym, `qwen2.5:7b-8k` (a
 `num_ctx 8192` variant of `qwen2.5:7b`, created via a Modelfile
 `PARAMETER num_ctx 8192`) answers correctly and concisely — e.g. "You have
 logged 16 workouts. Your most recent one was … Upper B — Volume." Set
-`FARM_SYSTEM_MODEL_NAME=qwen2.5:7b-8k` to use it.
+`STENGENTS_MODEL_NAME=qwen2.5:7b-8k` to use it (or leave it; it is the agent's
+default model name).
 
 ## Configuration
 
 - `KILN_BASE_URL` — Kiln's base URL. Defaults to `http://192.168.40.161:4173`.
-- Model connection follows the farm-system convention: `FARM_SYSTEM_MODEL_*`,
-  falling back to `STENGENTS_MODEL_*`, then the local `gym` defaults. The model
-  still runs loopback-only on `gym`, so its tunnel to `11434` must be up.
+- Model connection resolves through `stengents.model_source`: `STENGENTS_MODEL_*`,
+  falling back to the local `gym` defaults. The model still runs loopback-only on
+  `gym`, so its tunnel to `11434` must be up.
 
 ## Run
 

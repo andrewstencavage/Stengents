@@ -70,7 +70,7 @@ def test_run_fixture_writes_a_passing_record_after_the_agent_repairs_the_source(
     record_path, exit_code = run_fixture(
         fixture,
         run_directory=tmp_path / "runs",
-        model_name="test-model",
+        model={"provider": "openai-compatible", "name": "test-model"},
         agent_driver=repair,
         budget=RunBudget(action_limit=25, elapsed_seconds=300),
     )
@@ -136,7 +136,7 @@ def test_a_model_reading_a_bad_path_is_not_a_harness_failure(tmp_path: Path) -> 
         actions.read_file("/etc/passwd")
 
     record_path, exit_code = run_fixture(
-        fixture, run_directory=tmp_path / "runs", model_name="test-model", agent_driver=agent_reads_outside_the_fixture
+        fixture, run_directory=tmp_path / "runs", model={"provider": "openai-compatible", "name": "test-model"}, agent_driver=agent_reads_outside_the_fixture
     )
 
     verification = json.loads(record_path.read_text())["verification"]
@@ -189,7 +189,7 @@ def test_run_fixture_distinguishes_a_harness_error_from_a_fixture_failure(tmp_pa
         raise ConnectionError("model unavailable")
 
     record_path, exit_code = run_fixture(
-        fixture, run_directory=tmp_path / "runs", model_name="test-model", agent_driver=broken_agent
+        fixture, run_directory=tmp_path / "runs", model={"provider": "openai-compatible", "name": "test-model"}, agent_driver=broken_agent
     )
 
     assert exit_code == 2
