@@ -35,7 +35,7 @@ of this repository's harness or deterministic coding fixture.
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "run_id": "uuid",
   "started_at": "2026-07-22T18:40:00Z",
   "duration_ms": 8421,
@@ -44,7 +44,7 @@ of this repository's harness or deterministic coding fixture.
   "adk": {"version": "pinned-package-version", "invocation_id": "...", "agent": "coding_agent"},
   "model": {"provider": "openai-compatible", "name": "local-model"},
   "tool_events": [
-    {"name": "read_file", "started_offset_ms": 34, "duration_ms": 2, "outcome": "ok"}
+    {"name": "read_file", "args": {"path": "src/parser.py"}, "started_offset_ms": 34, "duration_ms": 2, "outcome": "ok", "result_summary": "def parse(...):…(+180)"}
   ],
   "artifacts": [{"path": "src/parser.py", "sha256": "..."}],
   "outcome": "passed",
@@ -54,10 +54,13 @@ of this repository's harness or deterministic coding fixture.
 
 `run_id`, the harness and fixture metadata, and `verification` are mandatory.
 `adk.invocation_id` can be absent only if runner setup fails before an
-invocation context exists.  Avoid raw prompts, model responses, tool arguments,
-and tool results in this first schema: they are not required for the stated run
-record and may contain source or secrets. Record bounded, redacted summaries
-only if later debugging proves them necessary.
+invocation context exists. Tool `args` and `result_summary` are recorded as
+**bounded** summaries — every value passes through
+`stengents.utilities.observation.reduce_value`, which keeps scalars and shapes
+but truncates long strings and collapses collections, so a payload (including
+fixture source) is never stored whole. This is the "bounded, redacted summaries
+… if later debugging proves them necessary" escape hatch the first schema
+reserved; raw prompts and full model responses are still not recorded.
 
 ## Implementation boundary
 

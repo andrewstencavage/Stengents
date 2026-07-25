@@ -78,7 +78,7 @@ def test_run_fixture_writes_a_passing_record_after_the_agent_repairs_the_source(
 
     record = json.loads(record_path.read_text())
     assert exit_code == 0
-    assert record["schema_version"] == 2
+    assert record["schema_version"] == 3
     assert record["outcome"] == "passed"
     assert record["fixture"]["id"] == "normalize-index"
     assert record["model"] == {"provider": "openai-compatible", "name": "test-model"}
@@ -88,6 +88,11 @@ def test_run_fixture_writes_a_passing_record_after_the_agent_repairs_the_source(
         "write_source_file",
         "run_tests",
     ]
+    events = {event["name"]: event for event in record["tool_events"]}
+    assert events["read_file"]["args"] == {"path": "normalize_index.py"}
+    assert events["read_file"]["result_summary"].startswith("def normalize_index(items, index):")
+    assert events["run_tests"]["result_summary"] == {"exit_code": 0, "passed": True}
+    assert record["adk"] == {"invocation_id": None, "agent": "coding_agent"}
     assert record["verification"] == {
         "command": [sys.executable, "-m", "pytest", "-q"],
         "exit_code": 0,
@@ -154,6 +159,23 @@ def test_write_accepts_a_normalized_variant_of_an_allowlisted_path(tmp_path: Pat
     actions = Actions(tmp_path, fixture, RunBudget(), time.monotonic())
 
     assert actions.write_source_file("./source.py", "value = 2\n") == "written"
+
+
+def test_tool_event_records_bounded_args_and_result(tmp_path: Path) -> None:
+    source = tmp_path / "source.py"
+    source.write_text("value = 1\n")
+    fixture = Fixture("fixture", tmp_path, ("source.py",), (sys.executable, "-c", ""))
+    actions = Actions(tmp_path, fixture, RunBudget(), time.monotonic())
+
+    actions.write_source_file("source.py", "y = " + "x" * 250)
+
+    event = actions.events[-1]
+    assert event["name"] == "write_source_file"
+    assert event["args"]["path"] == "source.py"
+    # the oversized content is truncated to the reducer's bound, never stored whole
+    assert event["args"]["content"].endswith("…(+54)") and len(event["args"]["content"]) == 206
+    assert event["outcome"] == "ok"
+    assert event["result_summary"] == "written"
 
 
 def test_agent_instruction_names_the_fixture_and_editable_source_surface(tmp_path: Path) -> None:
@@ -239,7 +261,7 @@ def test_build_run_record_stores_the_derived_outcome_and_full_shape() -> None:
         started_at="2026-07-25T00:00:00Z",
         duration_ms=12,
         fixture={"id": "normalize-index", "revision": "abc"},
-        adk={"invocation_id": "inv-1", "agent": "coding_agent", "tool_lifecycle_events": []},
+        adk={"invocation_id": "inv-1", "agent": "coding_agent"},
         model={"provider": "openai-compatible", "name": "test-model"},
         tool_events=[{"name": "run_tests", "outcome": "ok"}],
         artifacts=[{"path": "normalize_index.py", "sha256": "def"}],
@@ -247,7 +269,7 @@ def test_build_run_record_stores_the_derived_outcome_and_full_shape() -> None:
     )
 
     assert outcome is RunOutcome.PASSED
-    assert record["schema_version"] == 2
+    assert record["schema_version"] == 3
     assert record["outcome"] == "passed"
     assert record["run_id"] == "run-1"
     assert record["harness"] == {"id": "stengents", "revision": "working-tree"}
@@ -261,7 +283,7 @@ def test_build_run_record_reports_harness_failed_when_flagged() -> None:
         started_at="2026-07-25T00:00:00Z",
         duration_ms=1,
         fixture={"id": "normalize-index", "revision": "abc"},
-        adk={"invocation_id": None, "agent": "coding_agent", "tool_lifecycle_events": []},
+        adk={"invocation_id": None, "agent": "coding_agent"},
         model={"provider": "openai-compatible", "name": "test-model"},
         tool_events=[],
         artifacts=[],

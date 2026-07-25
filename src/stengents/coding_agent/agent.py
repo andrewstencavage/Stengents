@@ -11,7 +11,12 @@ from ..utilities.model_source import ModelConnection
 
 
 class RunCapturePlugin:
-    """Capture ADK lifecycle events in the active harness run."""
+    """Bind the ADK invocation id to the active harness run.
+
+    The tool trace itself is recorded by the harness's ``Actions._act`` (with
+    bounded args and result summaries), so this plugin only needs to capture the
+    invocation id that ties the run record back to the ADK invocation.
+    """
 
     def __init__(self, actions: Actions) -> None:
         from google.adk.plugins.base_plugin import BasePlugin
@@ -19,15 +24,6 @@ class RunCapturePlugin:
         class Plugin(BasePlugin):
             async def before_run_callback(self, *, invocation_context: object) -> None:
                 actions.adk_invocation_id = str(getattr(invocation_context, "invocation_id"))
-
-            async def before_tool_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object) -> None:
-                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "before"})
-
-            async def after_tool_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object, result: dict[str, object]) -> None:
-                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "after"})
-
-            async def on_tool_error_callback(self, *, tool: object, tool_args: dict[str, object], tool_context: object, error: Exception) -> None:
-                actions.adk_lifecycle_events.append({"name": str(getattr(tool, "name", "unknown")), "phase": "error"})
 
         self.plugin = Plugin(name="stengents_run_capture")
 
