@@ -59,3 +59,23 @@ _Avoid_: model response, tool outcome
 **Run announcement**:
 The credential-free machine-readable startup line that identifies a run, its fixture, resolved model/provider, fixed budgets, and intended run-record path.
 _Avoid_: console log, endpoint configuration
+
+## Turn logging
+
+General observability language for any agent, conversational or otherwise.
+
+**Turn**:
+One request/response exchange with an agent: a user query, the tool calls it triggers, and the agent's answer. The atomic unit of logging.
+_Avoid_: run, message, invocation
+
+**Session**:
+An ordered sequence of Turns sharing context — one conversation, or one task episode. A fixture attempt is a Session that also carries a verified outcome.
+_Avoid_: conversation thread, run
+
+**Turn record**:
+The logged trace of one Turn — query, tool calls (args and summarized results), timing, answer, and operational outcome — appended as one JSON line to a Turn log.
+_Avoid_: log line, run record
+
+**Operational outcome**:
+A Turn's execution-level result: `completed` (ran cleanly), `degraded` (an error occurred but the agent still answered), `errored` (an error and no answer), or `no_answer` (no error, no answer). Captures whether the exchange ran cleanly, not whether the answer was correct. Distinct from the harness's verification-based Run outcome.
+_Avoid_: verification outcome, pass/fail, quality

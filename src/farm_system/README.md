@@ -13,13 +13,20 @@ module namespace.
 
 ## Hello world
 
-With the `gym` tunnel running, invoke the standalone agent with:
+With the project venv active and the `gym` tunnel running, invoke the
+standalone agent with:
 
 ```bash
-PYTHONPATH=src adk run farm_system/hello_world
+adk run src/farm_system/hello_world
 ```
 
 `hello_world/agent.py` exports the standard ADK `root_agent`. It uses
 `STENGENTS_MODEL_BASE_URL`, `STENGENTS_MODEL_NAME`, and
 `STENGENTS_MODEL_API_KEY` when present, or the local `gym` defaults. Prefix the
 same settings with `FARM_SYSTEM_` to override only farm-system agents.
+
+## Kiln coach
+
+An agent that reads your Kiln training history over the LAN HTTP API and will
+grow toward planning and Session summaries. See
+[`kiln_coach/README.md`](kiln_coach/README.md).

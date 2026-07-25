@@ -61,5 +61,5 @@ preflight completes.
 ## Verify the harness
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m pytest
+.venv/bin/python -m pytest
 ```
