@@ -8,6 +8,7 @@ from pathlib import Path
 from .coding_agent import adk_driver
 from .harness import Fixture, run_fixture
 from .utilities.model_source import ModelSourceUnavailable, resolve_model
+from .run_record import RunOutcome
 
 
 def _fixture(identifier: str) -> Fixture:
@@ -63,5 +64,5 @@ def main(argv: list[str] | None = None) -> int:
     record_path = run_directory / f"{run_id}.json"
     print(json.dumps({"run_id": run_id, "fixture_id": fixture.identifier, "model": connection.as_record(), "action_limit": 25, "elapsed_time_limit_seconds": 300, "record_path": str(record_path)}))
     record_path, exit_code = run_fixture(fixture, run_directory=run_directory, model=connection.as_record(), agent_driver=adk_driver(connection), run_id=run_id)
-    print(json.dumps({"record_path": str(record_path), "outcome": "passed" if exit_code == 0 else "failed"}))
+    print(json.dumps({"record_path": str(record_path), "outcome": RunOutcome.from_exit_code(exit_code).value}))
     return exit_code

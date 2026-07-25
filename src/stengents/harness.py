@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable, TypeVar
 
+from .run_record import build_run_record
+
 
 T = TypeVar("T")
 
@@ -138,23 +140,19 @@ def run_fixture(
             verification["error"] = str(error)
             verification["harness_failed"] = True
         artifacts = [{"path": path, "sha256": _digest(root / path)} for path in fixture.source_surface]
-        record = {
-            "schema_version": 1,
-            "run_id": run_id,
-            "started_at": started_at,
-            "duration_ms": round((time.monotonic() - started) * 1000),
-            "harness": {"id": "stengents", "revision": "working-tree"},
-            "fixture": {"id": fixture.identifier, "revision": _digest(fixture.root / fixture.source_surface[0])},
-            "adk": {"invocation_id": actions.adk_invocation_id, "agent": "coding_agent", "tool_lifecycle_events": actions.adk_lifecycle_events},
-            "model": model,
-            "tool_events": actions.events,
-            "artifacts": artifacts,
-            "verification": verification,
-        }
+        record, outcome = build_run_record(
+            run_id=run_id,
+            started_at=started_at,
+            duration_ms=round((time.monotonic() - started) * 1000),
+            fixture={"id": fixture.identifier, "revision": _digest(fixture.root / fixture.source_surface[0])},
+            adk={"invocation_id": actions.adk_invocation_id, "agent": "coding_agent", "tool_lifecycle_events": actions.adk_lifecycle_events},
+            model=model,
+            tool_events=actions.events,
+            artifacts=artifacts,
+            verification=verification,
+        )
     record_path = run_directory / f"{run_id}.json"
     temporary_path = record_path.with_suffix(".tmp")
     temporary_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     temporary_path.replace(record_path)
-    if verification["passed"]:
-        return record_path, 0
-    return record_path, 2 if verification.get("harness_failed") else 1
+    return record_path, outcome.exit_code
