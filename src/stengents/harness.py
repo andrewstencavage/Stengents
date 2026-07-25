@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable, TypeVar
 
 from .run_record import build_run_record
+from .utilities.observation import reduce_value
 
 
 T = TypeVar("T")
@@ -43,7 +44,6 @@ class Actions:
         self.root, self.fixture, self.budget, self.started = root, fixture, budget, started
         self.events: list[dict[str, object]] = []
         self.adk_invocation_id: str | None = None
-        self.adk_lifecycle_events: list[dict[str, str]] = []
 
     def _path(self, relative_path: str) -> Path:
         candidate = (self.root / relative_path).resolve()
@@ -54,19 +54,20 @@ class Actions:
     def _fixture_relative_path(self, path: str) -> str:
         return self._path(path).relative_to(self.root.resolve()).as_posix()
 
-    def _act(self, name: str, operation: Callable[[], T]) -> T:
+    def _act(self, name: str, operation: Callable[[], T], *, args: dict[str, object] | None = None) -> T:
         if len(self.events) >= self.budget.action_limit:
             raise RunBudgetExceeded("run action budget exhausted")
         if time.monotonic() - self.started > self.budget.elapsed_seconds:
             raise RunBudgetExceeded("run elapsed-time budget exhausted")
         offset = round((time.monotonic() - self.started) * 1000)
+        reduced_args = reduce_value(args or {})
         action_started = time.monotonic()
         try:
             result = operation()
         except Exception:
-            self.events.append({"name": name, "started_offset_ms": offset, "duration_ms": round((time.monotonic() - action_started) * 1000), "outcome": "error"})
+            self.events.append({"name": name, "args": reduced_args, "started_offset_ms": offset, "duration_ms": round((time.monotonic() - action_started) * 1000), "outcome": "error"})
             raise
-        self.events.append({"name": name, "started_offset_ms": offset, "duration_ms": round((time.monotonic() - action_started) * 1000), "outcome": "ok"})
+        self.events.append({"name": name, "args": reduced_args, "started_offset_ms": offset, "duration_ms": round((time.monotonic() - action_started) * 1000), "outcome": "ok", "result_summary": reduce_value(result)})
         return result
 
     def list_files(self) -> list[str]:
@@ -83,7 +84,7 @@ class Actions:
                 return self._path(relative_path).read_text()
             except FileNotFoundError:
                 return f"rejected: {path} does not exist in the fixture; call list_files to see the readable paths"
-        return self._act("read_file", read)
+        return self._act("read_file", read, args={"path": path})
 
     def write_source_file(self, path: str, content: str) -> str:
         """Write only an allowlisted source file; rejected paths are returned to the agent."""
@@ -97,7 +98,7 @@ class Actions:
                 return f"rejected: {path} is not in the fixture source surface; only {allowed_paths} may be changed"
             self._path(relative_path).write_text(content)
             return "written"
-        return self._act("write_source_file", write)
+        return self._act("write_source_file", write, args={"path": path, "content": content})
 
     def run_tests(self) -> dict[str, object]:
         def verify() -> dict[str, object]:
@@ -145,7 +146,7 @@ def run_fixture(
             started_at=started_at,
             duration_ms=round((time.monotonic() - started) * 1000),
             fixture={"id": fixture.identifier, "revision": _digest(fixture.root / fixture.source_surface[0])},
-            adk={"invocation_id": actions.adk_invocation_id, "agent": "coding_agent", "tool_lifecycle_events": actions.adk_lifecycle_events},
+            adk={"invocation_id": actions.adk_invocation_id, "agent": "coding_agent"},
             model=model,
             tool_events=actions.events,
             artifacts=artifacts,
