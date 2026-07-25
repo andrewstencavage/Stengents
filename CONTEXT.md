@@ -69,15 +69,15 @@ _Avoid_: console log, endpoint configuration
 General observability language for any agent, conversational or otherwise.
 
 **Turn**:
-One request/response exchange with an agent: a user query, the tool calls it triggers, and the agent's answer. The atomic unit of logging.
+One request/response exchange with a single agent: a user (or delegating agent's) query, the tool calls it triggers, and the agent's answer. The atomic unit of logging. Attributed to the agent that ran it; a Turn a parent agent delegates to a subagent is a child of the delegating Turn.
 _Avoid_: run, message, invocation
 
 **Session**:
-An ordered sequence of Turns sharing context — one conversation, or one task episode. A fixture attempt is a Session that also carries a verified outcome.
+The Turns that share context — one conversation, or one task episode. When an agent delegates to subagents, the Turns form a tree linked by delegation (the delegating Turn is the parent), carrying a causal order rather than a flat linear one; a single-agent Session is the degenerate one-Turn case. A fixture attempt is a Session that also carries a verified outcome. See `docs/adr/0003-a-run-is-a-session-of-many-turns.md`.
 _Avoid_: conversation thread, run
 
 **Turn record**:
-The logged trace of one Turn — query, tool calls (args and summarized results), timing, answer, and operational outcome — appended as one JSON line to a Turn log.
+The logged trace of one Turn — query, tool calls (args and summarized results), timing, answer, operational outcome, and the Turn's agent and `parent_turn_id` — appended as one JSON line to a Turn log.
 _Avoid_: log line, run record
 
 **Operational outcome**:
