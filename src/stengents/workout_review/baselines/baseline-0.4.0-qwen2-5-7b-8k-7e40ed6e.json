@@ -1,0 +1,592 @@
+{
+  "run_id": "4cad1709-ba48-4753-8c5d-a332b0cd9a6e",
+  "generated_at": "2026-07-26T22:49:09.631692+00:00",
+  "capability_version": "0.4.0",
+  "model": {
+    "provider": "openai-compatible",
+    "name": "qwen2.5:7b-8k"
+  },
+  "corpus": {
+    "hash": "7e40ed6ecc9ff3a39aff23dfa3261db9c3eb9bdaafa4b42a2311f097047e74ec",
+    "case_count": 12
+  },
+  "aggregate": {
+    "case_count": 12,
+    "schema_valid_rate": 1.0,
+    "required_detail_recall": 0.6180555555555556,
+    "required_limitation_recall": 0.8333333333333334,
+    "evidence_validity_rate": 1.0,
+    "unsupported_claim_rate": 0.0,
+    "cases_passing": 4,
+    "cases_passing_rate": 0.3333333333333333
+  },
+  "gate": {
+    "passed": true,
+    "floors": [
+      {
+        "metric": "evidence_validity_rate",
+        "tier": "safety",
+        "comparator": ">=",
+        "value": 1.0,
+        "bound": 1.0,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      },
+      {
+        "metric": "unsupported_claim_rate",
+        "tier": "safety",
+        "comparator": "<=",
+        "value": 0.0,
+        "bound": 0.0,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      },
+      {
+        "metric": "schema_valid_rate",
+        "tier": "structural",
+        "comparator": ">=",
+        "value": 1.0,
+        "bound": 1.0,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      },
+      {
+        "metric": "required_detail_recall",
+        "tier": "quality",
+        "comparator": ">=",
+        "value": 0.6180555555555556,
+        "bound": 0.6,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      },
+      {
+        "metric": "required_limitation_recall",
+        "tier": "quality",
+        "comparator": ">=",
+        "value": 0.8333333333333334,
+        "bound": 0.33,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      }
+    ],
+    "retest": {
+      "performed": false,
+      "n": 3,
+      "cases": {}
+    }
+  },
+  "cases": [
+    {
+      "case_id": "c01-straightforward-success",
+      "subject_workout_id": "c6fa004c-d9e7-5d77-a9a9-318f6140c453",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 8,
+      "cited_evidence_valid": 8,
+      "invalid_evidence": [],
+      "required_detail_total": 3,
+      "required_detail_matched": 3,
+      "missing_required_evidence": [],
+      "required_limitations_total": 0,
+      "required_limitations_matched": 0,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 2,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 1.0,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": true,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": true
+    },
+    {
+      "case_id": "c02-improvement-vs-history",
+      "subject_workout_id": "d2b091cc-a07a-5d6a-8f5d-5cdb962b35aa",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 3,
+      "cited_evidence_valid": 3,
+      "invalid_evidence": [],
+      "required_detail_total": 2,
+      "required_detail_matched": 1,
+      "missing_required_evidence": [
+        [
+          "set",
+          "d2b091cc-a07a-5d6a-8f5d-5cdb962b35aa",
+          "Bench Press",
+          0,
+          11,
+          4,
+          "plate"
+        ]
+      ],
+      "required_limitations_total": 0,
+      "required_limitations_matched": 0,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 1,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 0.5,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": false,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": false
+    },
+    {
+      "case_id": "c03-regression-decline",
+      "subject_workout_id": "2127b61f-a2b7-5dd0-a98c-607b3e6ba69b",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 4,
+      "cited_evidence_valid": 4,
+      "invalid_evidence": [],
+      "required_detail_total": 3,
+      "required_detail_matched": 1,
+      "missing_required_evidence": [
+        [
+          "set",
+          "51a5999e-086e-5410-99d5-f2320d4f6bbe",
+          "Lat Pulldown",
+          0,
+          11,
+          4,
+          "plate"
+        ],
+        [
+          "set",
+          "36352830-5cdb-502c-82c5-7c21da91b7cc",
+          "Lat Pulldown",
+          0,
+          12,
+          5,
+          "plate"
+        ]
+      ],
+      "required_limitations_total": 0,
+      "required_limitations_matched": 0,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 1,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 0.3333333333333333,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": false,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": false
+    },
+    {
+      "case_id": "c04-exercise-substitution",
+      "subject_workout_id": "b95452e9-f63e-54bc-8d3c-46b1ab704cee",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 10,
+      "cited_evidence_valid": 10,
+      "invalid_evidence": [],
+      "required_detail_total": 2,
+      "required_detail_matched": 1,
+      "missing_required_evidence": [
+        [
+          "set",
+          "b95452e9-f63e-54bc-8d3c-46b1ab704cee",
+          "Hack Squat",
+          0,
+          8,
+          4,
+          "plate"
+        ]
+      ],
+      "required_limitations_total": 1,
+      "required_limitations_matched": 1,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 2,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 0.5,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": false,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": false
+    },
+    {
+      "case_id": "c05-incomplete-workout",
+      "subject_workout_id": "7137d664-e717-535a-8fb4-dc831ef3f151",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 2,
+      "cited_evidence_valid": 2,
+      "invalid_evidence": [],
+      "required_detail_total": 2,
+      "required_detail_matched": 1,
+      "missing_required_evidence": [
+        [
+          "fact",
+          "7137d664-e717-535a-8fb4-dc831ef3f151",
+          "Tricep Pushdown",
+          "skipped",
+          "true"
+        ]
+      ],
+      "required_limitations_total": 1,
+      "required_limitations_matched": 0,
+      "missing_limitations": [
+        [
+          "missing_data",
+          "Tricep Pushdown"
+        ]
+      ],
+      "forbidden_present": [],
+      "observation_total": 1,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 0.5,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": false,
+        "all_required_limitations_present": false,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": false
+    },
+    {
+      "case_id": "c06-conflicting-notes-vs-numbers",
+      "subject_workout_id": "208a2342-45f0-5a20-8f8d-bc6f1caae008",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 6,
+      "cited_evidence_valid": 6,
+      "invalid_evidence": [],
+      "required_detail_total": 3,
+      "required_detail_matched": 2,
+      "missing_required_evidence": [
+        [
+          "fact",
+          "208a2342-45f0-5a20-8f8d-bc6f1caae008",
+          "Seated Row",
+          "note",
+          "felt easy, really strong today"
+        ]
+      ],
+      "required_limitations_total": 1,
+      "required_limitations_matched": 1,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 1,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 0.6666666666666666,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": false,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": false
+    },
+    {
+      "case_id": "c07-insufficient-history",
+      "subject_workout_id": "4b571fac-3ab9-5342-97fd-a699fa643401",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 3,
+      "cited_evidence_valid": 3,
+      "invalid_evidence": [],
+      "required_detail_total": 1,
+      "required_detail_matched": 1,
+      "missing_required_evidence": [],
+      "required_limitations_total": 1,
+      "required_limitations_matched": 1,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 2,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 1.0,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": true,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": true
+    },
+    {
+      "case_id": "c08-cautious-plateau",
+      "subject_workout_id": "d83e55bb-777e-5f1a-b383-fe6116548b68",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 36,
+      "cited_evidence_valid": 36,
+      "invalid_evidence": [],
+      "required_detail_total": 3,
+      "required_detail_matched": 3,
+      "missing_required_evidence": [],
+      "required_limitations_total": 0,
+      "required_limitations_matched": 0,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 2,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 1.0,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": true,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": true
+    },
+    {
+      "case_id": "c09-one-off-poor-session",
+      "subject_workout_id": "c0c84df5-e20f-5349-b8f0-d4f5a0e8116f",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 2,
+      "cited_evidence_valid": 2,
+      "invalid_evidence": [],
+      "required_detail_total": 4,
+      "required_detail_matched": 1,
+      "missing_required_evidence": [
+        [
+          "set",
+          "c0c84df5-e20f-5349-b8f0-d4f5a0e8116f",
+          "Incline Press",
+          0,
+          6,
+          4,
+          "plate"
+        ],
+        [
+          "set",
+          "4d4c181a-4a34-5d6e-baa8-67e58e43570d",
+          "Incline Press",
+          0,
+          10,
+          4,
+          "plate"
+        ],
+        [
+          "set",
+          "c8d3c080-2f3b-53a8-b7e1-edeadd5b0642",
+          "Incline Press",
+          0,
+          10,
+          4,
+          "plate"
+        ]
+      ],
+      "required_limitations_total": 0,
+      "required_limitations_matched": 0,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 1,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 0.25,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": false,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": false
+    },
+    {
+      "case_id": "c10-missing-fields",
+      "subject_workout_id": "27749da8-01eb-5ce3-9679-991bd2234063",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 9,
+      "cited_evidence_valid": 9,
+      "invalid_evidence": [],
+      "required_detail_total": 1,
+      "required_detail_matched": 0,
+      "missing_required_evidence": [
+        [
+          "fact",
+          "27749da8-01eb-5ce3-9679-991bd2234063",
+          "Leg Press",
+          "note",
+          "forgot to log the weight"
+        ]
+      ],
+      "required_limitations_total": 1,
+      "required_limitations_matched": 1,
+      "missing_limitations": [],
+      "forbidden_present": [
+        [
+          "progression",
+          "Leg Press"
+        ]
+      ],
+      "observation_total": 2,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 0.0,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": false,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": false,
+        "no_unsupported_claims": true
+      },
+      "passed": false
+    },
+    {
+      "case_id": "c11-malformed-fields",
+      "subject_workout_id": "9ea78baf-98e5-5257-85e9-8d4a0ba8c1f1",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 9,
+      "cited_evidence_valid": 9,
+      "invalid_evidence": [],
+      "required_detail_total": 1,
+      "required_detail_matched": 1,
+      "missing_required_evidence": [],
+      "required_limitations_total": 1,
+      "required_limitations_matched": 1,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 2,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 1.0,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": true,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": true
+    },
+    {
+      "case_id": "c12-timed-holds-and-freeform",
+      "subject_workout_id": "13d3125b-7a85-55ff-900b-3725f75bdbfe",
+      "schema_valid": true,
+      "schema_error": null,
+      "cited_evidence_total": 6,
+      "cited_evidence_valid": 6,
+      "invalid_evidence": [],
+      "required_detail_total": 3,
+      "required_detail_matched": 2,
+      "missing_required_evidence": [
+        [
+          "set",
+          "c5a6538c-2f3d-549e-9c70-ebd5fa342220",
+          "Plank",
+          0,
+          0,
+          40,
+          "sec"
+        ]
+      ],
+      "required_limitations_total": 0,
+      "required_limitations_matched": 0,
+      "missing_limitations": [],
+      "forbidden_present": [],
+      "observation_total": 2,
+      "unsupported_observations": 0,
+      "unsupported_reasons": [],
+      "metrics": {
+        "required_detail_recall": 0.6666666666666666,
+        "evidence_validity_rate": 1.0,
+        "unsupported_claim_rate": 0.0
+      },
+      "checks": {
+        "schema_valid": true,
+        "all_evidence_valid": true,
+        "all_required_detail_recalled": false,
+        "all_required_limitations_present": true,
+        "no_forbidden_observations": true,
+        "no_unsupported_claims": true
+      },
+      "passed": false
+    }
+  ]
+}
