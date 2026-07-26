@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
   "google-adk",
   "litellm",
+  "pydantic>=2",
 ]
 
 [project.scripts]
