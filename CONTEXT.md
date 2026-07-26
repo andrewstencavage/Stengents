@@ -83,3 +83,27 @@ _Avoid_: log line, run record
 **Operational outcome**:
 A Turn's execution-level result: `completed` (ran cleanly), `degraded` (an error occurred but the agent still answered), `errored` (an error and no answer), or `no_answer` (no error, no answer). Captures whether the exchange ran cleanly, not whether the answer was correct. Distinct from the harness's verification-based Run outcome.
 _Avoid_: verification outcome, pass/fail, quality
+
+## Workout Review
+
+The evidence-backed review capability over Kiln training history: `review_workout(workout_id) -> WorkoutReview`. Its output contract is Pydantic v2 models in `stengents/workout_review`; the contract is pure content, so model, latency, cost, and version live in the run record / agent logs, never inside the review. Locked in #17.
+
+**Workout Review**:
+A concise, evidence-backed review of one finished Kiln Session: a factual summary, at most three Observations, and any acknowledged Limitations. Callable independently of chat as `review_workout(workout_id)`. It reviews a *performed* Session, not an assigned Kiln Workout.
+_Avoid_: summary, coaching, feedback
+
+**WorkoutReview**:
+The output object: `workout_id`, a factual `summary`, `observations` (0–3, hard-capped in the schema), and `limitations`. A pure content object — carries no model, latency, cost, or version.
+_Avoid_: report, result, response
+
+**Observation**:
+One evidence-backed statement in a review. Carries `kind` (`fact` or `inference` — both require at least one Evidence row, so no claim is ever evidence-free), `confidence` (`firm` or `tentative` — a signal for the later rubric, ignored by the deterministic evaluator), `category` (`performance`, `progression`, `adherence`, or `data_quality`), a human-readable `claim`, and its `evidence`. The exercise an Observation is about is derived from its Evidence, never restated, so the two cannot disagree.
+_Avoid_: finding, note, takeaway, insight
+
+**Evidence**:
+A single cited datum an Observation rests on, as a tagged union of **SetEvidence** (one performed set: `workout_id`, `exercise`, `set_index`, `reps`, `load`, `loadType`) and **FactEvidence** (a non-set datum: `workout_id`, `exercise` or null for session-level, `field`, `value`). One performed set is exactly one row. `loadType` and `FactEvidence.field` are closed vocabularies mirroring Kiln's fields; their exact members are pinned against the projection in #18.
+_Avoid_: reference, citation, source, proof
+
+**Limitation**:
+A structured acknowledgement of a gap rather than a guess: `kind` (`insufficient_history`, `missing_data`, `malformed_data`, or `conflicting_data`) and a `detail`. Structured so the deterministic evaluator can assert the correct gap was named, not merely that some text was present.
+_Avoid_: caveat, disclaimer, warning, note
