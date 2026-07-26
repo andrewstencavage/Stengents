@@ -38,6 +38,49 @@ def test_run_benchmark_scores_every_case_offline() -> None:
     assert all(result.schema_valid for result in results)
 
 
+def test_run_benchmark_warms_up_before_scoring(monkeypatch) -> None:
+    # Every generation goes through `_review_case`; spying on it proves the runner
+    # performs one throwaway warm-up on the first case (#42) *before* the scored
+    # pass, and that the warm-up is entirely offline (no extra network path).
+    cases = load_corpus()
+    seen: list[str] = []
+    real_review_case = benchmark_runner._review_case
+
+    def _spy(case, **kwargs):
+        seen.append(case.case_id)
+        return real_review_case(case, **kwargs)
+
+    monkeypatch.setattr(benchmark_runner, "_review_case", _spy)
+
+    results, _aggregate, reviews = run_benchmark(cases, complete=_fake_complete)
+
+    # First generation is the discarded warm-up on the first case...
+    assert seen[0] == cases[0].case_id
+    # ...then every case is scored exactly once, in order.
+    assert seen[1:] == [case.case_id for case in cases]
+    assert len(seen) == len(cases) + 1
+    # The warm-up review is thrown away — scoring still covers each case once.
+    assert len(results) == len(cases)
+    assert set(reviews) == {case.case_id for case in cases}
+
+
+def test_run_benchmark_warm_up_can_be_disabled(monkeypatch) -> None:
+    cases = load_corpus()
+    seen: list[str] = []
+    real_review_case = benchmark_runner._review_case
+
+    def _spy(case, **kwargs):
+        seen.append(case.case_id)
+        return real_review_case(case, **kwargs)
+
+    monkeypatch.setattr(benchmark_runner, "_review_case", _spy)
+
+    run_benchmark(cases, complete=_fake_complete, warm_up=False)
+
+    # No warm-up: exactly one generation per case, no extra leading call.
+    assert seen == [case.case_id for case in cases]
+
+
 def test_corpus_hash_is_deterministic_and_hex() -> None:
     first = corpus_hash()
     second = corpus_hash()

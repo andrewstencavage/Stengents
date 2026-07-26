@@ -77,6 +77,7 @@ def run_benchmark(
     *,
     model: ModelConnection | None = None,
     complete: Complete | None = None,
+    warm_up: bool = True,
 ) -> tuple[list[CaseResult], AggregateMetrics, dict[str, WorkoutReview]]:
     """Review and score every case, feeding each its own frozen Session pool.
 
@@ -84,7 +85,12 @@ def run_benchmark(
     `fetch`/`fetch_history` seams, so the corpus data never touches Kiln; only
     the model call is live (or the injected ``complete``). Returns the per-case
     results, the aggregate, and the generated reviews keyed by case-id.
+
+    Unless ``warm_up`` is False, one throwaway generation runs before the scored
+    pass (#42) so every scored run hits a warm endpoint — see :func:`_warm_up`.
     """
+    if warm_up and cases:
+        _warm_up(cases[0], model=model, complete=complete)
     results: list[CaseResult] = []
     reviews: dict[str, WorkoutReview] = {}
     for case in cases:
@@ -92,6 +98,24 @@ def run_benchmark(
         reviews[case.case_id] = review
         results.append(evaluate_review(review, case))
     return results, aggregate_results(results), reviews
+
+
+def _warm_up(
+    case: Case, *, model: ModelConnection | None = None, complete: Complete | None = None
+) -> None:
+    """Perform one throwaway generation through the real model path and discard it.
+
+    The Ollama endpoint serves a cold/just-loaded model slower and, materially, at
+    a lower ``required_detail_recall`` — the first 1-3 scored runs dip to ~0.53-0.59
+    before the model state (KV cache / weights load) settles and recall holds at its
+    true central ~0.66 (#42). Because that dip crosses the 0.60 detail floor, a cold
+    first scored run can read gate=FAIL for a reason unrelated to the capability.
+
+    Running one discarded generation over the same `_review_case` path before scoring
+    warms the endpoint at the source, so every scored run — and any recorded baseline —
+    is warm-guaranteed. One extra model call; the result is thrown away deliberately.
+    """
+    _review_case(case, model=model, complete=complete)
 
 
 def _review_case(
