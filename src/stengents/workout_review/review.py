@@ -106,11 +106,7 @@ def _generate_review(
     selected = select_comparison_history(session, pool)
     candidates = _candidate_evidence(session, selected)
     history_limits = _history_limitations(selected)
-    # The pool every candidate and cited row must ground against: the subject plus
-    # each prior Session comparison history was drawn from.
-    grounding = Grounding(
-        [session, *(prior["session"] for priors in selected.values() for prior in priors)]
-    )
+    grounding = review_grounding(session, selected)
 
     prompt = _build_prompt(session, selected, candidates)
     try:
@@ -186,6 +182,18 @@ def select_comparison_history(session: dict, pool: list[dict]) -> dict[str, list
                 break
         history[name] = priors
     return history
+
+
+def review_grounding(session: dict, selected: dict[str, list[dict]]) -> Grounding:
+    """Grounding over the pool a review's evidence must resolve against.
+
+    That pool is the subject Session plus every prior Session its comparison
+    history was drawn from — the exact set every candidate is built from, so
+    every candidate (and every cited row) grounds against it. Shared with the
+    corpus test so production and test can't drift on what that pool is.
+    """
+    pool = [session, *(prior["session"] for priors in selected.values() for prior in priors)]
+    return Grounding(pool)
 
 
 def _history_limitations(selected: dict[str, list[dict]]) -> list[Limitation]:

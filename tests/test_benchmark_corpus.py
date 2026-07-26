@@ -22,8 +22,11 @@ from stengents.workout_review.contract import (
     LimitationKind,
     SetEvidence,
 )
-from stengents.workout_review.grounding import Grounding
-from stengents.workout_review.review import _candidate_evidence, select_comparison_history
+from stengents.workout_review.review import (
+    _candidate_evidence,
+    review_grounding,
+    select_comparison_history,
+)
 
 # Locate the corpus by filesystem path from this test file so discovery is
 # independent of how the ``stengents`` package resolves on sys.path.
@@ -157,9 +160,7 @@ def test_every_generator_candidate_grounds_for_each_case(case_id: str) -> None:
     subject = next(s for s in pool if s["id"] == expectations["subject_workout_id"])
     selected = select_comparison_history(subject, finished_sessions(pool))
     candidates = _candidate_evidence(subject, selected)
-    grounding = Grounding(
-        [subject, *(prior["session"] for priors in selected.values() for prior in priors)]
-    )
+    grounding = review_grounding(subject, selected)
 
     assert candidates, f"{case_id}: subject offers no citable evidence"
     ungrounded = [e for e in candidates if not grounding.resolves(e)]

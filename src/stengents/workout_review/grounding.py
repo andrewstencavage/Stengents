@@ -124,7 +124,3 @@ class Grounding:
 
     def resolves(self, row: Evidence) -> bool:
         return resolves(row, self._set_index, self._sessions)
-
-    @property
-    def sessions(self) -> dict[str, dict]:
-        return self._sessions
