@@ -107,3 +107,7 @@ _Avoid_: reference, citation, source, proof
 **Limitation**:
 A structured acknowledgement of a gap rather than a guess: `kind` (`insufficient_history`, `missing_data`, `malformed_data`, or `conflicting_data`) and a `detail`. Structured so the deterministic evaluator can assert the correct gap was named, not merely that some text was present.
 _Avoid_: caveat, disclaimer, warning, note
+
+**Comparison history**:
+The prior Sessions a review compares against, selected **deterministically and per exercise** (not per workout — workout names don't recur, exercises do). Decided in #19. For each exercise in the subject Session that carries `performedSets`, its comparison history is the finished Sessions strictly earlier by `date` that performed an activity of the **exact same name** *with* non-empty `performedSets`, ordered newest-first, capped at the **10** most recent. Only `progression` Observations consume it. An exercise with **zero** prior instances has *insufficient history* — no comparison is made and the gap is acknowledged with `Limitation(insufficient_history)`; one or more permits a comparison. The `performedSets` filter excludes the pre-2026-07-20 freeform Sessions automatically, so they age out of comparison as structured logging accumulates.
+_Avoid_: lookback, context window, retrieval
