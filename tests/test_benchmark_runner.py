@@ -124,3 +124,61 @@ def test_write_baseline_lands_at_self_identifying_path(tmp_path) -> None:
     hash8 = corpus_hash()[:8]
     assert path.name == f"baseline-{CAPABILITY_VERSION}-qwen2-5-7b-8k-{hash8}.json"
     assert "review" not in json.loads(path.read_text())["cases"][0]
+
+
+def test_parse_recognizes_write_baseline_flag() -> None:
+    positional, model_override, write_baseline_flag = cli._parse(["review-benchmark", "--write-baseline"])
+    assert positional == ["review-benchmark"]
+    assert model_override is None
+    assert write_baseline_flag is True
+
+    _, _, unflagged = cli._parse(["review-benchmark"])
+    assert unflagged is False
+
+
+def _install_offline_benchmark(monkeypatch, tmp_path):
+    """Stub the endpoint-bound pieces of review-benchmark so the command runs
+    offline, and return a list that records every write_baseline call."""
+    from stengents.workout_review import benchmark_runner
+
+    class _FakeConnection:
+        name = "qwen2.5:7b-8k"
+        base_url = "http://endpoint"
+
+        def preflight(self):
+            return None
+
+        def as_record(self):
+            return {"provider": "openai-compatible", "name": self.name}
+
+    monkeypatch.setattr(cli, "resolve_model", lambda default_name, name=None: _FakeConnection())
+    monkeypatch.setattr(benchmark_runner, "run_benchmark", lambda cases, model: ("results", "aggregate", "reviews"))
+    monkeypatch.setattr(benchmark_runner, "build_artifact", lambda **kwargs: {"aggregate": {"case_count": 12}})
+    monkeypatch.setattr(benchmark_runner, "write_artifact", lambda artifact: tmp_path / "run.json")
+
+    baseline_calls: list[dict] = []
+
+    def _spy_write_baseline(artifact):
+        baseline_calls.append(artifact)
+        return tmp_path / "baseline.json"
+
+    monkeypatch.setattr(benchmark_runner, "write_baseline", _spy_write_baseline)
+    return baseline_calls
+
+
+def test_review_benchmark_writes_baseline_with_flag(tmp_path, monkeypatch, capsys) -> None:
+    baseline_calls = _install_offline_benchmark(monkeypatch, tmp_path)
+
+    assert cli.main(["review-benchmark", "--write-baseline"]) == 0
+
+    assert len(baseline_calls) == 1
+    assert "baseline.json" in capsys.readouterr().out
+
+
+def test_review_benchmark_skips_baseline_by_default(tmp_path, monkeypatch, capsys) -> None:
+    baseline_calls = _install_offline_benchmark(monkeypatch, tmp_path)
+
+    assert cli.main(["review-benchmark"]) == 0
+
+    assert baseline_calls == []
+    assert "baseline.json" not in capsys.readouterr().out

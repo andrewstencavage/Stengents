@@ -17,12 +17,13 @@ def _fixture(identifier: str) -> Fixture:
     return Fixture(identifier, Path(__file__).parent / "fixtures" / identifier, ("normalize_index.py",), (sys.executable, "-m", "pytest", "-q"))
 
 
-_USAGE = "usage: stengents run <fixture-id> [--model <name>]\n       stengents review-benchmark [--model <name>]"
+_USAGE = "usage: stengents run <fixture-id> [--model <name>]\n       stengents review-benchmark [--model <name>] [--write-baseline]"
 
 
-def _parse(arguments: list[str]) -> tuple[list[str], str | None]:
+def _parse(arguments: list[str]) -> tuple[list[str], str | None, bool]:
     positional: list[str] = []
     model_override: str | None = None
+    write_baseline = False
     index = 0
     while index < len(arguments):
         token = arguments[index]
@@ -33,10 +34,12 @@ def _parse(arguments: list[str]) -> tuple[list[str], str | None]:
             model_override = arguments[index]
         elif token.startswith("--model="):
             model_override = token[len("--model=") :]
+        elif token == "--write-baseline":
+            write_baseline = True
         else:
             positional.append(token)
         index += 1
-    return positional, model_override
+    return positional, model_override, write_baseline
 
 
 def _run_command(fixture_id: str, model_override: str | None) -> int:
@@ -59,11 +62,11 @@ def _run_command(fixture_id: str, model_override: str | None) -> int:
     return exit_code
 
 
-def _review_benchmark_command(model_override: str | None) -> int:
+def _review_benchmark_command(model_override: str | None, write_baseline_flag: bool = False) -> int:
     # Deferred imports: the review capability pulls in pydantic/litellm, which the
     # `run` path does not need.
     from .workout_review import CAPABILITY_VERSION
-    from .workout_review.benchmark_runner import build_artifact, corpus_hash, run_benchmark, write_artifact
+    from .workout_review.benchmark_runner import build_artifact, corpus_hash, run_benchmark, write_artifact, write_baseline
     from .workout_review.evaluator import load_corpus
     from .workout_review.review import DEFAULT_MODEL_NAME
 
@@ -83,13 +86,16 @@ def _review_benchmark_command(model_override: str | None) -> int:
     artifact = build_artifact(results=results, aggregate=aggregate, reviews=reviews, model_record=connection.as_record(), run_id=run_id)
     record_path = write_artifact(artifact)
     print(json.dumps({"record_path": str(record_path), "aggregate": artifact["aggregate"]}))
+    if write_baseline_flag:
+        baseline_path = write_baseline(artifact)
+        print(json.dumps({"baseline_path": str(baseline_path)}))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
     try:
-        positional, model_override = _parse(arguments)
+        positional, model_override, write_baseline_flag = _parse(arguments)
     except ValueError:
         print(_USAGE, file=sys.stderr)
         return 2
@@ -100,6 +106,6 @@ def main(argv: list[str] | None = None) -> int:
     if command == "run" and len(positional) == 2:
         return _run_command(positional[1], model_override)
     if command == "review-benchmark" and len(positional) == 1:
-        return _review_benchmark_command(model_override)
+        return _review_benchmark_command(model_override, write_baseline_flag)
     print(_USAGE, file=sys.stderr)
     return 2
