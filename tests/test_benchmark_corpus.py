@@ -15,13 +15,15 @@ from pathlib import Path
 
 import pytest
 
-from farm_system.kiln_coach.kiln_client import performed_sets
+from farm_system.kiln_coach.kiln_client import finished_sessions, performed_sets
 from stengents.workout_review.contract import (
     Category,
     FactEvidence,
     LimitationKind,
     SetEvidence,
 )
+from stengents.workout_review.grounding import Grounding
+from stengents.workout_review.review import _candidate_evidence, select_comparison_history
 
 # Locate the corpus by filesystem path from this test file so discovery is
 # independent of how the ``stengents`` package resolves on sys.path.
@@ -141,3 +143,24 @@ def test_forbidden_observations_use_the_contract_vocab(case_id: str) -> None:
         assert forbidden["category"] in _CATEGORIES
         assert forbidden.get("exercise")
         assert forbidden.get("why"), "a forbidden observation must say why"
+
+
+@pytest.mark.parametrize("case_id", CASE_IDS)
+def test_every_generator_candidate_grounds_for_each_case(case_id: str) -> None:
+    # The generator must offer the model only Evidence that grounds verbatim.
+    # A candidate that cannot resolve (the old synthesised ``sets_completed``
+    # count on structured activities) leads the model to cite what the evaluator
+    # scores as an invented fact — the entire source of the 0.1.0 baseline's
+    # unsupported claims. Grounding every candidate the generator builds for each
+    # real subject guards against that class of divergence returning.
+    pool, expectations = _load(case_id)
+    subject = next(s for s in pool if s["id"] == expectations["subject_workout_id"])
+    selected = select_comparison_history(subject, finished_sessions(pool))
+    candidates = _candidate_evidence(subject, selected)
+    grounding = Grounding(
+        [subject, *(prior["session"] for priors in selected.values() for prior in priors)]
+    )
+
+    assert candidates, f"{case_id}: subject offers no citable evidence"
+    ungrounded = [e for e in candidates if not grounding.resolves(e)]
+    assert not ungrounded, f"{case_id}: generator offered ungroundable candidates: {ungrounded}"
