@@ -22,7 +22,18 @@ contract types.
 #   (c06, c10) and ``required_detail_recall`` 0.528 -> 0.625 with the safety
 #   floors held, taking the live gate FAIL -> PASS. c05 (skipped Tricep Pushdown)
 #   and c11 (malformed sets invisible to the model, #41) remain unrecalled.
-CAPABILITY_VERSION = "0.3.0"
+# 0.4.0 — surface the malformed-set signal to the generator (#41): sets that
+#   fail to build a valid ``SetEvidence`` are silently dropped by ``_set_rows``,
+#   so a prompt-only nudge could never name them. ``_build_prompt`` now emits a
+#   per-exercise DATA QUALITY NOTES section counting the dropped sets, plus an
+#   inline instruction to raise ``malformed_data`` naming each listed exercise.
+#   Both are injected ONLY when a session has dropped sets, so every clean-case
+#   prompt stays byte-identical to 0.3.0 (no collateral perturbation). On a warm
+#   qwen2.5:7b-8k A/B (corpus 7e40ed6e) c11 (malformed Chest Fly) now recalls its
+#   limitation, lifting ``required_limitation_recall`` 0.667 -> 0.833 with both
+#   safety floors held and the gate PASS. c05 (visible skipped signal) still
+#   misses — a nudge-strength gap, not a visibility gap.
+CAPABILITY_VERSION = "0.4.0"
 
 from .contract import (
     Category,

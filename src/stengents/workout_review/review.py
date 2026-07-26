@@ -107,8 +107,9 @@ def _generate_review(
     candidates = _candidate_evidence(session, selected)
     history_limits = _history_limitations(selected)
     grounding = review_grounding(session, selected)
+    malformed = _malformed_set_notes(session)
 
-    prompt = _build_prompt(session, selected, candidates)
+    prompt = _build_prompt(session, selected, candidates, malformed)
     try:
         raw = complete(model, prompt)
         parsed = _extract_json(raw)
@@ -255,6 +256,33 @@ def _set_rows(workout_id: str, exercise: str | None, activity: dict) -> list[Evi
     return rows
 
 
+def _malformed_set_notes(session: dict) -> dict[str, int]:
+    """Per-exercise count of the subject's performed sets that fail to parse.
+
+    ``_set_rows`` silently drops any ``performedSet`` that can't build a valid
+    ``SetEvidence`` — a set missing its load unit, a null measurement, an
+    out-of-vocabulary ``loadType`` — so those rows never reach the candidate
+    evidence or the prompt, leaving a prompt-only nudge nothing to name. This
+    counts, per subject exercise, how many of its logged sets were unparseable so
+    ``_build_prompt`` can surface the signal as a DATA QUALITY NOTES line. It is
+    deliberately *not* a citable candidate: a synthetic 'malformed' fact could
+    never ground verbatim against real Kiln fields and would be dropped by the
+    resolvability guard — but a ``Limitation`` needs no evidence citation.
+    """
+    workout_id = session.get("id", "")
+    notes: dict[str, int] = {}
+    for activity in session.get("activities") or []:
+        name = activity.get("name")
+        if not name:
+            continue
+        total = len(activity.get("performedSets") or [])
+        parsed = len(_set_rows(workout_id, name, activity))
+        dropped = total - parsed
+        if dropped > 0:
+            notes[name] = dropped
+    return notes
+
+
 def _session_facts(workout_id: str, session: dict) -> list[Evidence]:
     pairs = {
         "date": session.get("date"),
@@ -348,7 +376,12 @@ _INSTRUCTIONS = (
 )
 
 
-def _build_prompt(session: dict, selected: dict[str, list[dict]], candidates: list[Evidence]) -> str:
+def _build_prompt(
+    session: dict,
+    selected: dict[str, list[dict]],
+    candidates: list[Evidence],
+    malformed: dict[str, int] | None = None,
+) -> str:
     lines: list[str] = [_INSTRUCTIONS, ""]
     lines.append("SUBJECT SESSION:")
     lines.append(
@@ -377,6 +410,20 @@ def _build_prompt(session: dict, selected: dict[str, list[dict]], candidates: li
         else:
             lines.append(f"- {name}: no prior history (insufficient history)")
     lines.append("")
+    if malformed:
+        lines.append("DATA QUALITY NOTES (sets that could not be parsed, not shown as evidence):")
+        for name, dropped in malformed.items():
+            plural = "s" if dropped != 1 else ""
+            lines.append(
+                f"- {name}: {dropped} performed set{plural} were unreadable/malformed "
+                "and were dropped."
+            )
+        lines.append(
+            "For EACH exercise listed above you MUST add a 'malformed_data' limitation "
+            "whose 'detail' NAMES that exact exercise — those sets could not be parsed "
+            "and are absent from the evidence, so this note is the only signal of them."
+        )
+        lines.append("")
     lines.append("CANDIDATE EVIDENCE (id: row):")
     for index, evidence in enumerate(candidates, start=1):
         lines.append(f"{index}: {json.dumps(evidence.model_dump())}")
