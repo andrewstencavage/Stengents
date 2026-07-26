@@ -1,0 +1,37 @@
+{
+  "subject_workout_id": "208a2342-45f0-5a20-8f8d-bc6f1caae008",
+  "required_evidence": [
+    {
+      "kind": "fact",
+      "workout_id": "208a2342-45f0-5a20-8f8d-bc6f1caae008",
+      "exercise": "Seated Row",
+      "field": "note",
+      "value": "felt easy, really strong today"
+    },
+    {
+      "kind": "set",
+      "workout_id": "208a2342-45f0-5a20-8f8d-bc6f1caae008",
+      "exercise": "Seated Row",
+      "set_index": 0,
+      "reps": 8,
+      "load": 2,
+      "loadType": "plate"
+    },
+    {
+      "kind": "set",
+      "workout_id": "30830503-8ad8-5e8f-83cb-1f1ed550b92a",
+      "exercise": "Seated Row",
+      "set_index": 0,
+      "reps": 12,
+      "load": 4,
+      "loadType": "plate"
+    }
+  ],
+  "required_limitations": [
+    {
+      "kind": "conflicting_data",
+      "exercise": "Seated Row"
+    }
+  ],
+  "forbidden_observations": []
+}

@@ -1,0 +1,27 @@
+{
+  "subject_workout_id": "4b571fac-3ab9-5342-97fd-a699fa643401",
+  "required_evidence": [
+    {
+      "kind": "set",
+      "workout_id": "4b571fac-3ab9-5342-97fd-a699fa643401",
+      "exercise": "Goblet Squat",
+      "set_index": 0,
+      "reps": 10,
+      "load": 2,
+      "loadType": "plate"
+    }
+  ],
+  "required_limitations": [
+    {
+      "kind": "insufficient_history",
+      "exercise": "Goblet Squat"
+    }
+  ],
+  "forbidden_observations": [
+    {
+      "category": "progression",
+      "exercise": "Goblet Squat",
+      "why": "Every prior instance was freeform with no performed sets, so there is nothing to compare against."
+    }
+  ]
+}

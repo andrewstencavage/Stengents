@@ -1,0 +1,72 @@
+[
+  {
+    "id": "0c60faca-0025-5c5c-81f9-103d1bf4ff1c",
+    "status": "finished",
+    "date": "2026-07-22T14:00:00.000Z",
+    "workoutName": "Upper B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Chest Fly",
+        "performedSets": [
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 11,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "9ea78baf-98e5-5257-85e9-8d4a0ba8c1f1",
+    "status": "finished",
+    "date": "2026-07-25T14:05:00.000Z",
+    "workoutName": "Upper B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Chest Fly",
+        "performedSets": [
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2
+            }
+          },
+          {
+            "reps": 11,
+            "measurement": null
+          }
+        ]
+      }
+    ]
+  }
+]

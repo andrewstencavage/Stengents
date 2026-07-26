@@ -1,0 +1,25 @@
+{
+  "subject_workout_id": "27749da8-01eb-5ce3-9679-991bd2234063",
+  "required_evidence": [
+    {
+      "kind": "fact",
+      "workout_id": "27749da8-01eb-5ce3-9679-991bd2234063",
+      "exercise": "Leg Press",
+      "field": "note",
+      "value": "forgot to log the weight"
+    }
+  ],
+  "required_limitations": [
+    {
+      "kind": "missing_data",
+      "exercise": "Leg Press"
+    }
+  ],
+  "forbidden_observations": [
+    {
+      "category": "progression",
+      "exercise": "Leg Press",
+      "why": "Subject load was never recorded, so no load comparison against history is possible."
+    }
+  ]
+}

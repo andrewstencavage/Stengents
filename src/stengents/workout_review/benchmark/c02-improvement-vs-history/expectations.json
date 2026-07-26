@@ -1,0 +1,25 @@
+{
+  "subject_workout_id": "d2b091cc-a07a-5d6a-8f5d-5cdb962b35aa",
+  "required_evidence": [
+    {
+      "kind": "set",
+      "workout_id": "d2b091cc-a07a-5d6a-8f5d-5cdb962b35aa",
+      "exercise": "Bench Press",
+      "set_index": 0,
+      "reps": 11,
+      "load": 4,
+      "loadType": "plate"
+    },
+    {
+      "kind": "set",
+      "workout_id": "f90b7171-8720-5e9e-8eb4-d32710be0f29",
+      "exercise": "Bench Press",
+      "set_index": 0,
+      "reps": 10,
+      "load": 3,
+      "loadType": "plate"
+    }
+  ],
+  "required_limitations": [],
+  "forbidden_observations": []
+}

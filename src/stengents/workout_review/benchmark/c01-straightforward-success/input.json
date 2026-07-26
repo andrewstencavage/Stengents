@@ -1,0 +1,124 @@
+[
+  {
+    "id": "47c6dca3-0841-5cc6-9fe0-582ddbd3c0ef",
+    "status": "finished",
+    "date": "2026-07-21T10:05:00.000Z",
+    "workoutName": "Lower B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "plannedActivity": {
+          "prescribedSets": [
+            0,
+            1,
+            2
+          ]
+        },
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "c6fa004c-d9e7-5d77-a9a9-318f6140c453",
+    "status": "finished",
+    "date": "2026-07-24T10:12:00.000Z",
+    "workoutName": "Lower B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "easy",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "plannedActivity": {
+          "prescribedSets": [
+            0,
+            1,
+            2
+          ]
+        },
+        "feel": "right",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Leg Curl",
+        "plannedActivity": {
+          "prescribedSets": [
+            0,
+            1,
+            2
+          ]
+        },
+        "performedSets": [
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 11,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

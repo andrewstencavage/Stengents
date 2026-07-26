@@ -1,0 +1,71 @@
+[
+  {
+    "id": "803efb00-95bf-518a-afd0-c7f3a88c8f7d",
+    "status": "finished",
+    "date": "2026-07-10T08:00:00.000Z",
+    "workoutName": "Full Body",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Goblet Squat",
+        "spec": "3 sets, felt ok",
+        "sets_completed": 3
+      }
+    ]
+  },
+  {
+    "id": "2a5586fe-f715-520b-9290-bbeadf2203ff",
+    "status": "finished",
+    "date": "2026-07-14T08:00:00.000Z",
+    "workoutName": "Full Body",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Goblet Squat",
+        "spec": "3 sets moderate",
+        "sets_completed": 3
+      }
+    ]
+  },
+  {
+    "id": "4b571fac-3ab9-5342-97fd-a699fa643401",
+    "status": "finished",
+    "date": "2026-07-25T08:05:00.000Z",
+    "workoutName": "Full Body",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Goblet Squat",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 9,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

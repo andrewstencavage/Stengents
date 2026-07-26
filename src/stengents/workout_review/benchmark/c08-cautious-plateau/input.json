@@ -1,0 +1,225 @@
+[
+  {
+    "id": "1b6ad3d3-6977-510b-b08e-664253f7909f",
+    "status": "finished",
+    "date": "2026-07-11T12:00:00.000Z",
+    "workoutName": "Lower B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "1267494e-28ab-502b-81bb-d57a5497dbfb",
+    "status": "finished",
+    "date": "2026-07-14T12:00:00.000Z",
+    "workoutName": "Lower B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6c3371e4-4c7a-5f72-ae10-abb5ba42bace",
+    "status": "finished",
+    "date": "2026-07-17T12:00:00.000Z",
+    "workoutName": "Lower B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "9f7f346f-0c42-511c-b6e9-fda428065b43",
+    "status": "finished",
+    "date": "2026-07-20T12:00:00.000Z",
+    "workoutName": "Lower B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "eed48543-7f38-5c69-8c89-96839bc98556",
+    "status": "finished",
+    "date": "2026-07-23T12:00:00.000Z",
+    "workoutName": "Lower B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "d83e55bb-777e-5f1a-b383-fe6116548b68",
+    "status": "finished",
+    "date": "2026-07-25T12:00:00.000Z",
+    "workoutName": "Lower B",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "feel": "right",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

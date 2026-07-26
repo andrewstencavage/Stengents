@@ -1,0 +1,192 @@
+[
+  {
+    "id": "707eff86-13c1-5378-8849-05423d09136d",
+    "status": "finished",
+    "date": "2026-07-20T11:00:00.000Z",
+    "workoutName": "Lower A",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Leg Curl",
+        "performedSets": [
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "daef9965-d3c6-5ded-8833-f97942397fd2",
+    "status": "finished",
+    "date": "2026-07-23T11:00:00.000Z",
+    "workoutName": "Lower A",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Cable Squat",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 9,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Leg Curl",
+        "performedSets": [
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 11,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "b95452e9-f63e-54bc-8d3c-46b1ab704cee",
+    "status": "finished",
+    "date": "2026-07-25T11:05:00.000Z",
+    "workoutName": "Lower A",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Hack Squat",
+        "note": "squat rack taken, subbed hack squat",
+        "performedSets": [
+          {
+            "reps": 8,
+            "measurement": {
+              "value": 4,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 8,
+            "measurement": {
+              "value": 4,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 7,
+            "measurement": {
+              "value": 4,
+              "unit": "plate"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Leg Curl",
+        "performedSets": [
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

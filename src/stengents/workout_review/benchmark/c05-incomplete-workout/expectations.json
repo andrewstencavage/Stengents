@@ -1,0 +1,26 @@
+{
+  "subject_workout_id": "7137d664-e717-535a-8fb4-dc831ef3f151",
+  "required_evidence": [
+    {
+      "kind": "fact",
+      "workout_id": "7137d664-e717-535a-8fb4-dc831ef3f151",
+      "exercise": "Overhead Press",
+      "field": "planned_sets",
+      "value": "4"
+    },
+    {
+      "kind": "fact",
+      "workout_id": "7137d664-e717-535a-8fb4-dc831ef3f151",
+      "exercise": "Tricep Pushdown",
+      "field": "skipped",
+      "value": "true"
+    }
+  ],
+  "required_limitations": [
+    {
+      "kind": "missing_data",
+      "exercise": "Tricep Pushdown"
+    }
+  ],
+  "forbidden_observations": []
+}

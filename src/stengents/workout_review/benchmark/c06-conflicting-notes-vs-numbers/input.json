@@ -1,0 +1,78 @@
+[
+  {
+    "id": "30830503-8ad8-5e8f-83cb-1f1ed550b92a",
+    "status": "finished",
+    "date": "2026-07-21T16:00:00.000Z",
+    "workoutName": "Pull",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Seated Row",
+        "performedSets": [
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 4,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 4,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 11,
+            "measurement": {
+              "value": 4,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "208a2342-45f0-5a20-8f8d-bc6f1caae008",
+    "status": "finished",
+    "date": "2026-07-24T16:05:00.000Z",
+    "workoutName": "Pull",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Seated Row",
+        "note": "felt easy, really strong today",
+        "feel": "easy",
+        "performedSets": [
+          {
+            "reps": 8,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 7,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 6,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]
