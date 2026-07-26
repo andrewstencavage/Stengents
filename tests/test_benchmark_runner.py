@@ -8,7 +8,9 @@ from stengents.workout_review.benchmark_runner import (
     build_artifact,
     corpus_hash,
     run_benchmark,
+    trimmed_baseline,
     write_artifact,
+    write_baseline,
 )
 from stengents.workout_review.evaluator import load_corpus
 
@@ -93,3 +95,32 @@ def test_write_artifact_lands_at_run_id_path(tmp_path) -> None:
 def test_cli_rejects_malformed_invocations(argv, capsys) -> None:
     assert cli.main(argv) == 2
     assert "usage:" in capsys.readouterr().err
+
+
+def _sample_artifact() -> dict:
+    cases = load_corpus()
+    results, aggregate, reviews = run_benchmark(cases, complete=_fake_complete)
+    return build_artifact(
+        results=results,
+        aggregate=aggregate,
+        reviews=reviews,
+        model_record={"provider": "openai-compatible", "name": "qwen2.5:7b-8k"},
+        run_id="run-123",
+    )
+
+
+def test_trimmed_baseline_drops_reviews_but_keeps_results() -> None:
+    trimmed = trimmed_baseline(_sample_artifact())
+
+    assert trimmed["capability_version"] == CAPABILITY_VERSION
+    assert trimmed["corpus"]["hash"]
+    assert all("review" not in case for case in trimmed["cases"])
+    assert all("checks" in case for case in trimmed["cases"])
+
+
+def test_write_baseline_lands_at_self_identifying_path(tmp_path) -> None:
+    path = write_baseline(_sample_artifact(), baselines_dir=tmp_path)
+
+    hash8 = corpus_hash()[:8]
+    assert path.name == f"baseline-{CAPABILITY_VERSION}-qwen2-5-7b-8k-{hash8}.json"
+    assert "review" not in json.loads(path.read_text())["cases"][0]

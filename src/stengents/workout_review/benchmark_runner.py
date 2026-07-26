@@ -37,8 +37,14 @@ from .evaluator import (
 )
 from .review import Complete, review_workout
 
-# Where a benchmark run's artifact is written, mirroring `.stengents/runs/`.
+# Where a benchmark run's full artifact is written, mirroring `.stengents/runs/`.
+# Transient and gitignored — one file per run, carrying the generated reviews.
 ARTIFACT_DIR = Path(".stengents/benchmark")
+
+# Where a *recorded* baseline is committed — tracked, one per (capability, model,
+# corpus). Trimmed of the model-nondeterministic reviews so it reads as a stable
+# reference the tune loop can diff future runs against.
+BASELINES_DIR = Path(__file__).resolve().parent / "baselines"
 
 
 def corpus_hash(benchmark_dir: Path = BENCHMARK_DIR) -> str:
@@ -141,4 +147,35 @@ def write_artifact(artifact: dict, *, run_dir: Path = ARTIFACT_DIR) -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / f"{artifact['run_id']}.json"
     path.write_text(json.dumps(artifact, indent=2) + "\n")
+    return path
+
+
+def trimmed_baseline(artifact: dict) -> dict:
+    """A committable baseline: the full artifact minus each case's generated
+    review. The per-case deterministic results (checks, metrics, missing/forbidden
+    detail) and the stamps stay, so it's a stable reference; the reviews — which
+    vary run to run — are dropped so a committed baseline isn't noise."""
+    trimmed = {key: value for key, value in artifact.items() if key != "cases"}
+    trimmed["cases"] = [
+        {key: value for key, value in case.items() if key != "review"}
+        for case in artifact["cases"]
+    ]
+    return trimmed
+
+
+def _model_slug(name: str) -> str:
+    return "".join(char if char.isalnum() else "-" for char in name).strip("-")
+
+
+def write_baseline(artifact: dict, *, baselines_dir: Path = BASELINES_DIR) -> Path:
+    """Write the trimmed baseline to a tracked, self-identifying path — one file
+    per (capability version, model, corpus hash), overwritten on re-record."""
+    baselines_dir.mkdir(parents=True, exist_ok=True)
+    name = (
+        f"baseline-{artifact['capability_version']}"
+        f"-{_model_slug(artifact['model']['name'])}"
+        f"-{artifact['corpus']['hash'][:8]}.json"
+    )
+    path = baselines_dir / name
+    path.write_text(json.dumps(trimmed_baseline(artifact), indent=2) + "\n")
     return path
