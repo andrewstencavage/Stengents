@@ -66,7 +66,7 @@ def _review_benchmark_command(model_override: str | None, write_baseline_flag: b
     # Deferred imports: the review capability pulls in pydantic/litellm, which the
     # `run` path does not need.
     from .workout_review import CAPABILITY_VERSION
-    from .workout_review.benchmark_runner import build_artifact, corpus_hash, run_benchmark, write_artifact, write_baseline
+    from .workout_review.benchmark_runner import build_artifact, corpus_hash, gate_benchmark, run_benchmark, write_artifact, write_baseline
     from .workout_review.evaluator import load_corpus
     from .workout_review.review import DEFAULT_MODEL_NAME
 
@@ -83,9 +83,10 @@ def _review_benchmark_command(model_override: str | None, write_baseline_flag: b
     run_id = str(uuid.uuid4())
     print(json.dumps({"run_id": run_id, "corpus_hash": corpus_hash(), "case_count": len(cases), "model": connection.as_record(), "capability_version": CAPABILITY_VERSION}))
     results, aggregate, reviews = run_benchmark(cases, model=connection)
-    artifact = build_artifact(results=results, aggregate=aggregate, reviews=reviews, model_record=connection.as_record(), run_id=run_id)
+    gate = gate_benchmark(cases, results, aggregate, model=connection)
+    artifact = build_artifact(results=results, aggregate=aggregate, reviews=reviews, model_record=connection.as_record(), run_id=run_id, gate=gate)
     record_path = write_artifact(artifact)
-    print(json.dumps({"record_path": str(record_path), "aggregate": artifact["aggregate"]}))
+    print(json.dumps({"record_path": str(record_path), "aggregate": artifact["aggregate"], "gate": {"passed": gate.passed}}))
     if write_baseline_flag:
         baseline_path = write_baseline(artifact)
         print(json.dumps({"baseline_path": str(baseline_path)}))

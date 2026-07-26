@@ -333,6 +333,7 @@ class AggregateMetrics:
     case_count: int
     schema_valid_rate: float
     required_detail_recall: float
+    required_limitation_recall: float
     evidence_validity_rate: float
     unsupported_claim_rate: float
     cases_passing: int
@@ -349,10 +350,22 @@ def aggregate_results(results: Iterable[CaseResult]) -> AggregateMetrics:
     results = list(results)
     count = len(results)
     if count == 0:
-        return AggregateMetrics(0, 1.0, 1.0, 1.0, 0.0, 0)
+        return AggregateMetrics(0, 1.0, 1.0, 1.0, 1.0, 0.0, 0)
 
     schema_valid_rate = sum(1 for r in results if r.schema_valid) / count
     required_detail_recall = sum(r.required_detail_recall for r in results) / count
+
+    # required-limitation recall is **micro-averaged over only the cases that
+    # require a limitation** (#33): summing matched/total across the corpus, which
+    # naturally excludes no-requirement cases (they add 0 to both sums) instead of
+    # diluting the rate with a free 1.0 the way a per-case mean would. This keeps
+    # the metric tracking exactly the data-quality-limitation failure mode the
+    # floor gates. Undefined (→ 1.0) only if no case in the corpus requires one.
+    required_limitation_total = sum(r.required_limitations_total for r in results)
+    required_limitation_matched = sum(r.required_limitations_matched for r in results)
+    required_limitation_recall = (
+        1.0 if required_limitation_total == 0 else required_limitation_matched / required_limitation_total
+    )
 
     cited_total = sum(r.cited_evidence_total for r in results)
     cited_valid = sum(r.cited_evidence_valid for r in results)
@@ -368,6 +381,7 @@ def aggregate_results(results: Iterable[CaseResult]) -> AggregateMetrics:
         case_count=count,
         schema_valid_rate=schema_valid_rate,
         required_detail_recall=required_detail_recall,
+        required_limitation_recall=required_limitation_recall,
         evidence_validity_rate=evidence_validity_rate,
         unsupported_claim_rate=unsupported_claim_rate,
         cases_passing=cases_passing,

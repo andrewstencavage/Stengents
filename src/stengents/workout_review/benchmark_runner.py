@@ -36,6 +36,11 @@ from .evaluator import (
     load_corpus,
 )
 from .review import Complete, review_workout
+from .threshold import GateReport, RetestReport, Threshold, evaluate_floors
+
+# On a safety-gate violation, each offending case is re-generated up to this many
+# times to tell a reproducible defect from a one-off flake (#33).
+SAFETY_RETEST_N = 3
 
 # Where a benchmark run's full artifact is written, mirroring `.stengents/runs/`.
 # Transient and gitignored — one file per run, carrying the generated reviews.
@@ -83,17 +88,108 @@ def run_benchmark(
     results: list[CaseResult] = []
     reviews: dict[str, WorkoutReview] = {}
     for case in cases:
-        by_id = {session.get("id"): session for session in case.pool}
-        review = review_workout(
-            case.subject_workout_id,
-            fetch=(lambda workout_id, _by_id=by_id: _by_id.get(workout_id)),
-            fetch_history=(lambda _pool=case.pool: list(_pool)),
-            model=model,
-            complete=complete,
-        )
+        review = _review_case(case, model=model, complete=complete)
         reviews[case.case_id] = review
         results.append(evaluate_review(review, case))
     return results, aggregate_results(results), reviews
+
+
+def _review_case(
+    case: Case, *, model: ModelConnection | None = None, complete: Complete | None = None
+) -> WorkoutReview:
+    """Generate one review for ``case``, feeding it only its own frozen pool.
+
+    The single place the review's `fetch`/`fetch_history` seams are wired to a
+    case's `input.json`, so `run_benchmark` and the safety retest generate
+    identically.
+    """
+    by_id = {session.get("id"): session for session in case.pool}
+    return review_workout(
+        case.subject_workout_id,
+        fetch=(lambda workout_id, _by_id=by_id: _by_id.get(workout_id)),
+        fetch_history=(lambda _pool=case.pool: list(_pool)),
+        model=model,
+        complete=complete,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The passing gate + confirm-before-failing retest (#33/#37)
+# --------------------------------------------------------------------------- #
+def _violates(result: CaseResult, metric: str) -> bool:
+    """Whether one case violates a given safety metric."""
+    if metric == "evidence_validity_rate":
+        return not result.all_evidence_valid
+    if metric == "unsupported_claim_rate":
+        return not result.no_unsupported_claims
+    return False
+
+
+def gate_benchmark(
+    cases: list[Case],
+    results: list[CaseResult],
+    aggregate: AggregateMetrics,
+    *,
+    model: ModelConnection | None = None,
+    complete: Complete | None = None,
+    threshold: Threshold = Threshold(),
+    retest_n: int = SAFETY_RETEST_N,
+) -> GateReport:
+    """Turn a scored run into a single pass/fail verdict.
+
+    Applies the #33 floors to ``aggregate``. If a **safety** floor fails, each
+    offending case is re-reviewed up to ``retest_n`` times: a violation that
+    recurs even once is a confirmed defect (the floor stays failed); a case whose
+    every confirmation run is clean is a flake (it clears). A safety floor is
+    lifted to passing only when *all* its offending cases clear — this is
+    confirm-before-failing, not retry-until-pass. Quality/structural floors are
+    never retested.
+    """
+    floors = evaluate_floors(aggregate, threshold)
+    failed_safety = [f for f in floors if f.tier == "safety" and not f.raw_passed]
+    if not failed_safety:
+        return GateReport(tuple(floors), RetestReport(performed=False, n=retest_n, cases={}))
+
+    cases_by_id = {case.case_id: case for case in cases}
+    retest_cases: dict[str, dict[str, str]] = {}
+    cleared_metrics: set[str] = set()
+    for floor in failed_safety:
+        metric = floor.metric
+        offenders = [r.case_id for r in results if _violates(r, metric)]
+        verdicts: dict[str, str] = {}
+        for case_id in offenders:
+            reproduced = _confirm_violation(
+                cases_by_id[case_id], metric, model=model, complete=complete, n=retest_n
+            )
+            verdicts[case_id] = "reproduced" if reproduced else "cleared"
+        retest_cases[metric] = verdicts
+        # The floor clears only if every offender was a flake.
+        if offenders and all(v == "cleared" for v in verdicts.values()):
+            cleared_metrics.add(metric)
+
+    final_floors = tuple(
+        floor.cleared_by_retest() if floor.metric in cleared_metrics else floor
+        for floor in floors
+    )
+    return GateReport(final_floors, RetestReport(performed=True, n=retest_n, cases=retest_cases))
+
+
+def _confirm_violation(
+    case: Case,
+    metric: str,
+    *,
+    model: ModelConnection | None = None,
+    complete: Complete | None = None,
+    n: int = SAFETY_RETEST_N,
+) -> bool:
+    """Re-review ``case`` up to ``n`` times; return ``True`` if ``metric`` is
+    violated in any confirmation run (reproduced), ``False`` if all ``n`` are
+    clean (a flake)."""
+    for _ in range(n):
+        review = _review_case(case, model=model, complete=complete)
+        if _violates(evaluate_review(review, case), metric):
+            return True
+    return False
 
 
 def _now_iso() -> str:
@@ -126,12 +222,17 @@ def build_artifact(
     reviews: dict[str, WorkoutReview],
     model_record: dict[str, str],
     run_id: str,
+    gate: GateReport | None = None,
     benchmark_dir: Path = BENCHMARK_DIR,
     capability_version: str = CAPABILITY_VERSION,
     generated_at: str | None = None,
 ) -> dict:
-    """Assemble the JSON-serializable metrics artifact for one benchmark run."""
-    return {
+    """Assemble the JSON-serializable metrics artifact for one benchmark run.
+
+    When a ``gate`` is supplied its verdict (#33 pass/fail, per-floor breakdown,
+    and the confirm-before-failing retest record) is stamped under ``gate``.
+    """
+    artifact = {
         "run_id": run_id,
         "generated_at": generated_at or _now_iso(),
         "capability_version": capability_version,
@@ -140,6 +241,9 @@ def build_artifact(
         "aggregate": _aggregate_to_dict(aggregate),
         "cases": [_case_result_to_dict(result, reviews[result.case_id]) for result in results],
     }
+    if gate is not None:
+        artifact["gate"] = gate.to_dict()
+    return artifact
 
 
 def write_artifact(artifact: dict, *, run_dir: Path = ARTIFACT_DIR) -> Path:
