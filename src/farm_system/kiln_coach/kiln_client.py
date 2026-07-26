@@ -40,6 +40,48 @@ def fetch_sessions(limit: int = 100, *, base: str | None = None, timeout: int = 
     return finished_sessions(sessions)
 
 
+def fetch_workout(workout_id: str, *, limit: int = 100, base: str | None = None, timeout: int = 10) -> dict | None:
+    """Fetch one finished Session by its stable ``id``, or ``None`` if not found.
+
+    A Workout Review is addressed by the Session's ``id`` — Kiln's per-Session
+    UUID, unique and stable across refetch. The review reads this one Session as
+    the subject; its comparison history is selected separately from
+    ``fetch_sessions`` (the finished-Session pool, each also carrying ``id``).
+    Only finished Sessions are addressable; an abandoned ``id`` returns ``None``.
+    """
+    for session in fetch_sessions(limit=limit, base=base, timeout=timeout):
+        if session.get("id") == workout_id:
+            return session
+    return None
+
+
+def performed_sets(activity: dict) -> list[dict]:
+    """Project one Activity's performed sets onto the ``SetEvidence`` shape.
+
+    Returns one row per performed set — ``set_index`` (its position), ``reps``,
+    ``load`` (the measurement value, ``None`` for a bodyweight movement), and
+    ``loadType`` (Kiln's own ``measurement.unit``, e.g. ``plate`` or ``sec``,
+    passed through verbatim). This is the single source of truth reviews cite a
+    set against. Freeform Activities (a warmup or cardio row carrying only a
+    ``spec`` string and ``sets_completed``, no ``performedSets``) yield ``[]`` —
+    they are citable only through non-set facts, never a set. ``reps`` is ``0``
+    for a timed hold, where the work lives in ``load``/``loadType`` (a 45-second
+    plank is ``reps=0, load=45, loadType="sec"``).
+    """
+    rows: list[dict] = []
+    for set_index, entry in enumerate(activity.get("performedSets") or []):
+        measurement = entry.get("measurement") or {}
+        rows.append(
+            {
+                "set_index": set_index,
+                "reps": entry.get("reps"),
+                "load": measurement.get("value"),
+                "loadType": measurement.get("unit"),
+            }
+        )
+    return rows
+
+
 def _collapse_sets(performed: list[dict]) -> str:
     """Render performed sets compactly, e.g. ``4×10@3plate`` or ``10@3plate, 8@3plate``."""
     rendered: list[str] = []
