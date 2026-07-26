@@ -17,7 +17,7 @@ def _fixture(identifier: str) -> Fixture:
     return Fixture(identifier, Path(__file__).parent / "fixtures" / identifier, ("normalize_index.py",), (sys.executable, "-m", "pytest", "-q"))
 
 
-_USAGE = "usage: stengents run <fixture-id> [--model <name>]"
+_USAGE = "usage: stengents run <fixture-id> [--model <name>]\n       stengents review-benchmark [--model <name>]"
 
 
 def _parse(arguments: list[str]) -> tuple[list[str], str | None]:
@@ -39,22 +39,13 @@ def _parse(arguments: list[str]) -> tuple[list[str], str | None]:
     return positional, model_override
 
 
-def main(argv: list[str] | None = None) -> int:
-    arguments = sys.argv[1:] if argv is None else argv
-    try:
-        positional, model_override = _parse(arguments)
-    except ValueError:
-        print(_USAGE, file=sys.stderr)
-        return 2
-    if len(positional) != 2 or positional[0] != "run":
-        print(_USAGE, file=sys.stderr)
-        return 2
+def _run_command(fixture_id: str, model_override: str | None) -> int:
     connection = resolve_model("", name=model_override)
     if not connection.name:
         print("preflight failed: configured_model_missing; detail=a model is required via --model or STENGENTS_MODEL_NAME", file=sys.stderr)
         return 2
     try:
-        fixture = _fixture(positional[1])
+        fixture = _fixture(fixture_id)
         connection.preflight()
     except (ValueError, ModelSourceUnavailable) as error:
         print(f"preflight failed: {error}; endpoint={connection.base_url}; model={connection.name}", file=sys.stderr)
@@ -66,3 +57,49 @@ def main(argv: list[str] | None = None) -> int:
     record_path, exit_code = run_fixture(fixture, run_directory=run_directory, model=connection.as_record(), agent_driver=adk_driver(connection), run_id=run_id)
     print(json.dumps({"record_path": str(record_path), "outcome": RunOutcome.from_exit_code(exit_code).value}))
     return exit_code
+
+
+def _review_benchmark_command(model_override: str | None) -> int:
+    # Deferred imports: the review capability pulls in pydantic/litellm, which the
+    # `run` path does not need.
+    from .workout_review import CAPABILITY_VERSION
+    from .workout_review.benchmark_runner import build_artifact, corpus_hash, run_benchmark, write_artifact
+    from .workout_review.evaluator import load_corpus
+    from .workout_review.review import DEFAULT_MODEL_NAME
+
+    connection = resolve_model(DEFAULT_MODEL_NAME, name=model_override)
+    if not connection.name:
+        print("preflight failed: configured_model_missing; detail=a model is required via --model or STENGENTS_MODEL_NAME", file=sys.stderr)
+        return 2
+    try:
+        connection.preflight()
+    except ModelSourceUnavailable as error:
+        print(f"preflight failed: {error}; endpoint={connection.base_url}; model={connection.name}", file=sys.stderr)
+        return 2
+    cases = load_corpus()
+    run_id = str(uuid.uuid4())
+    print(json.dumps({"run_id": run_id, "corpus_hash": corpus_hash(), "case_count": len(cases), "model": connection.as_record(), "capability_version": CAPABILITY_VERSION}))
+    results, aggregate, reviews = run_benchmark(cases, model=connection)
+    artifact = build_artifact(results=results, aggregate=aggregate, reviews=reviews, model_record=connection.as_record(), run_id=run_id)
+    record_path = write_artifact(artifact)
+    print(json.dumps({"record_path": str(record_path), "aggregate": artifact["aggregate"]}))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if argv is None else argv
+    try:
+        positional, model_override = _parse(arguments)
+    except ValueError:
+        print(_USAGE, file=sys.stderr)
+        return 2
+    if not positional:
+        print(_USAGE, file=sys.stderr)
+        return 2
+    command = positional[0]
+    if command == "run" and len(positional) == 2:
+        return _run_command(positional[1], model_override)
+    if command == "review-benchmark" and len(positional) == 1:
+        return _review_benchmark_command(model_override)
+    print(_USAGE, file=sys.stderr)
+    return 2
