@@ -1,0 +1,34 @@
+{
+  "subject_workout_id": "d83e55bb-777e-5f1a-b383-fe6116548b68",
+  "required_evidence": [
+    {
+      "kind": "set",
+      "workout_id": "d83e55bb-777e-5f1a-b383-fe6116548b68",
+      "exercise": "Cable Squat",
+      "set_index": 0,
+      "reps": 10,
+      "load": 3,
+      "loadType": "plate"
+    },
+    {
+      "kind": "set",
+      "workout_id": "eed48543-7f38-5c69-8c89-96839bc98556",
+      "exercise": "Cable Squat",
+      "set_index": 0,
+      "reps": 10,
+      "load": 3,
+      "loadType": "plate"
+    },
+    {
+      "kind": "set",
+      "workout_id": "1b6ad3d3-6977-510b-b08e-664253f7909f",
+      "exercise": "Cable Squat",
+      "set_index": 0,
+      "reps": 10,
+      "load": 3,
+      "loadType": "plate"
+    }
+  ],
+  "required_limitations": [],
+  "forbidden_observations": []
+}

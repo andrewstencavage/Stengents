@@ -1,0 +1,34 @@
+{
+  "subject_workout_id": "2127b61f-a2b7-5dd0-a98c-607b3e6ba69b",
+  "required_evidence": [
+    {
+      "kind": "set",
+      "workout_id": "2127b61f-a2b7-5dd0-a98c-607b3e6ba69b",
+      "exercise": "Lat Pulldown",
+      "set_index": 0,
+      "reps": 9,
+      "load": 3,
+      "loadType": "plate"
+    },
+    {
+      "kind": "set",
+      "workout_id": "51a5999e-086e-5410-99d5-f2320d4f6bbe",
+      "exercise": "Lat Pulldown",
+      "set_index": 0,
+      "reps": 11,
+      "load": 4,
+      "loadType": "plate"
+    },
+    {
+      "kind": "set",
+      "workout_id": "36352830-5cdb-502c-82c5-7c21da91b7cc",
+      "exercise": "Lat Pulldown",
+      "set_index": 0,
+      "reps": 12,
+      "load": 5,
+      "loadType": "plate"
+    }
+  ],
+  "required_limitations": [],
+  "forbidden_observations": []
+}

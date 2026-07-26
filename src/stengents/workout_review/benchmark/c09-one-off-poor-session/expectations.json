@@ -1,0 +1,47 @@
+{
+  "subject_workout_id": "c0c84df5-e20f-5349-b8f0-d4f5a0e8116f",
+  "required_evidence": [
+    {
+      "kind": "set",
+      "workout_id": "c0c84df5-e20f-5349-b8f0-d4f5a0e8116f",
+      "exercise": "Incline Press",
+      "set_index": 0,
+      "reps": 6,
+      "load": 4,
+      "loadType": "plate"
+    },
+    {
+      "kind": "set",
+      "workout_id": "4d4c181a-4a34-5d6e-baa8-67e58e43570d",
+      "exercise": "Incline Press",
+      "set_index": 0,
+      "reps": 10,
+      "load": 4,
+      "loadType": "plate"
+    },
+    {
+      "kind": "set",
+      "workout_id": "c8d3c080-2f3b-53a8-b7e1-edeadd5b0642",
+      "exercise": "Incline Press",
+      "set_index": 0,
+      "reps": 10,
+      "load": 4,
+      "loadType": "plate"
+    },
+    {
+      "kind": "fact",
+      "workout_id": "c0c84df5-e20f-5349-b8f0-d4f5a0e8116f",
+      "exercise": "Incline Press",
+      "field": "note",
+      "value": "slept badly, felt drained"
+    }
+  ],
+  "required_limitations": [],
+  "forbidden_observations": [
+    {
+      "category": "progression",
+      "exercise": "Incline Press",
+      "why": "One weak session against five strong priors is a single-session dip, not a downward trend."
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+[
+  {
+    "id": "ab03794b-445c-515e-b669-e3625559d80a",
+    "status": "finished",
+    "date": "2026-07-22T07:30:00.000Z",
+    "workoutName": "Push",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Overhead Press",
+        "plannedActivity": {
+          "prescribedSets": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 9,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 8,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "7137d664-e717-535a-8fb4-dc831ef3f151",
+    "status": "finished",
+    "date": "2026-07-25T07:35:00.000Z",
+    "workoutName": "Push",
+    "type": "strength",
+    "minutes": 18,
+    "feel": "hard",
+    "activities": [
+      {
+        "name": "Overhead Press",
+        "plannedActivity": {
+          "prescribedSets": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "note": "cut short, out of time",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 9,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Tricep Pushdown",
+        "plannedActivity": {
+          "prescribedSets": [
+            0,
+            1,
+            2
+          ]
+        },
+        "skipped": true,
+        "performedSets": []
+      }
+    ]
+  }
+]

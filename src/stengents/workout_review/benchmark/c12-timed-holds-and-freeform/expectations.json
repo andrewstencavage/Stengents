@@ -1,0 +1,32 @@
+{
+  "subject_workout_id": "13d3125b-7a85-55ff-900b-3725f75bdbfe",
+  "required_evidence": [
+    {
+      "kind": "set",
+      "workout_id": "13d3125b-7a85-55ff-900b-3725f75bdbfe",
+      "exercise": "Plank",
+      "set_index": 0,
+      "reps": 0,
+      "load": 45,
+      "loadType": "sec"
+    },
+    {
+      "kind": "set",
+      "workout_id": "c5a6538c-2f3d-549e-9c70-ebd5fa342220",
+      "exercise": "Plank",
+      "set_index": 0,
+      "reps": 0,
+      "load": 40,
+      "loadType": "sec"
+    },
+    {
+      "kind": "fact",
+      "workout_id": "13d3125b-7a85-55ff-900b-3725f75bdbfe",
+      "exercise": "Warmup: easy row",
+      "field": "spec",
+      "value": "5 min easy stroke"
+    }
+  ],
+  "required_limitations": [],
+  "forbidden_observations": []
+}

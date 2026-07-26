@@ -1,0 +1,21 @@
+{
+  "subject_workout_id": "9ea78baf-98e5-5257-85e9-8d4a0ba8c1f1",
+  "required_evidence": [
+    {
+      "kind": "set",
+      "workout_id": "9ea78baf-98e5-5257-85e9-8d4a0ba8c1f1",
+      "exercise": "Chest Fly",
+      "set_index": 0,
+      "reps": 12,
+      "load": 2,
+      "loadType": "plate"
+    }
+  ],
+  "required_limitations": [
+    {
+      "kind": "malformed_data",
+      "exercise": "Chest Fly"
+    }
+  ],
+  "forbidden_observations": []
+}

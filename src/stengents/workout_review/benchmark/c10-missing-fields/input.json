@@ -1,0 +1,77 @@
+[
+  {
+    "id": "a7436883-27b5-567e-a253-a07e124cda45",
+    "status": "finished",
+    "date": "2026-07-22T13:00:00.000Z",
+    "workoutName": "Lower A",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Leg Press",
+        "performedSets": [
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 6,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": 6,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 11,
+            "measurement": {
+              "value": 6,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "27749da8-01eb-5ce3-9679-991bd2234063",
+    "status": "finished",
+    "date": "2026-07-25T13:05:00.000Z",
+    "workoutName": "Lower A",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Leg Press",
+        "note": "forgot to log the weight",
+        "performedSets": [
+          {
+            "reps": 12,
+            "measurement": {
+              "value": null,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 12,
+            "measurement": {
+              "value": null,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 11,
+            "measurement": {
+              "value": null,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

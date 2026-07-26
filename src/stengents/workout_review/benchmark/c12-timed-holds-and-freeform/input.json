@@ -1,0 +1,75 @@
+[
+  {
+    "id": "c5a6538c-2f3d-549e-9c70-ebd5fa342220",
+    "status": "finished",
+    "date": "2026-07-22T06:30:00.000Z",
+    "workoutName": "Core",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Plank",
+        "performedSets": [
+          {
+            "reps": 0,
+            "measurement": {
+              "value": 40,
+              "unit": "sec"
+            }
+          },
+          {
+            "reps": 0,
+            "measurement": {
+              "value": 40,
+              "unit": "sec"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "13d3125b-7a85-55ff-900b-3725f75bdbfe",
+    "status": "finished",
+    "date": "2026-07-25T06:35:00.000Z",
+    "workoutName": "Core",
+    "type": "conditioning",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Warmup: easy row",
+        "spec": "5 min easy stroke",
+        "sets_completed": 1,
+        "note": "loosen up"
+      },
+      {
+        "name": "Plank",
+        "performedSets": [
+          {
+            "reps": 0,
+            "measurement": {
+              "value": 45,
+              "unit": "sec"
+            }
+          },
+          {
+            "reps": 0,
+            "measurement": {
+              "value": 45,
+              "unit": "sec"
+            }
+          },
+          {
+            "reps": 0,
+            "measurement": {
+              "value": 40,
+              "unit": "sec"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,114 @@
+[
+  {
+    "id": "c4a8daf3-7b54-5199-8ac0-0123ba6addda",
+    "status": "finished",
+    "date": "2026-07-20T09:30:00.000Z",
+    "workoutName": "Upper A",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Bench Press",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 9,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 8,
+            "measurement": {
+              "value": 2,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "f90b7171-8720-5e9e-8eb4-d32710be0f29",
+    "status": "finished",
+    "date": "2026-07-22T09:40:00.000Z",
+    "workoutName": "Upper A",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Bench Press",
+        "performedSets": [
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 9,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 8,
+            "measurement": {
+              "value": 3,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "d2b091cc-a07a-5d6a-8f5d-5cdb962b35aa",
+    "status": "finished",
+    "date": "2026-07-25T09:35:00.000Z",
+    "workoutName": "Upper A",
+    "type": "strength",
+    "minutes": 35,
+    "feel": "right",
+    "activities": [
+      {
+        "name": "Bench Press",
+        "feel": "hard",
+        "performedSets": [
+          {
+            "reps": 11,
+            "measurement": {
+              "value": 4,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 10,
+            "measurement": {
+              "value": 4,
+              "unit": "plate"
+            }
+          },
+          {
+            "reps": 9,
+            "measurement": {
+              "value": 4,
+              "unit": "plate"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]
