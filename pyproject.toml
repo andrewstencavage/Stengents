@@ -19,6 +19,9 @@ stengents = "stengents.cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Test the checkout's own src (this file's directory), not wherever an editable
+# install happens to point — so the suite is correct in a git worktree too.
+pythonpath = ["src"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/stengents"]
