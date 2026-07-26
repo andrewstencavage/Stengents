@@ -13,7 +13,9 @@ from stengents.workout_review import (
 )
 from stengents.workout_review.grounding import Grounding
 from stengents.workout_review.review import (
+    _build_prompt,
     _candidate_evidence,
+    _malformed_set_notes,
     _resolve_evidence,
     select_comparison_history,
 )
@@ -366,6 +368,58 @@ def test_structured_activity_offers_no_derived_sets_completed_candidate() -> Non
     assert all(grounding.resolves(e) for e in candidates)
     subject_sets = [e for e in candidates if isinstance(e, SetEvidence) and e.workout_id == "subj"]
     assert len(subject_sets) == 3  # the count is citable one-per-set, not as a fact
+
+
+def test_malformed_set_notes_counts_dropped_subject_sets() -> None:
+    # A set missing its load unit and one with a null measurement both fail to
+    # build a valid SetEvidence, so _set_rows silently drops them. The note counts
+    # exactly those dropped rows per exercise so the signal can reach the prompt.
+    subject = {
+        "id": "subj",
+        "status": "finished",
+        "date": "2026-07-25T14:05:00.000Z",
+        "workoutName": "Upper B",
+        "type": "strength",
+        "activities": [
+            {
+                "name": "Chest Fly",
+                "performedSets": [
+                    {"reps": 12, "measurement": {"value": 2, "unit": "plate"}},  # valid
+                    {"reps": 12, "measurement": {"value": 2}},  # missing unit -> dropped
+                    {"reps": 11, "measurement": None},  # null measurement -> dropped
+                ],
+            },
+            _activity("Cable Squat", [(10, 3.0)]),  # all clean
+        ],
+    }
+    notes = _malformed_set_notes(subject)
+    assert notes == {"Chest Fly": 2}
+
+
+def test_clean_session_has_no_malformed_notes() -> None:
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0), (8, 3.0)])])
+    assert _malformed_set_notes(subject) == {}
+
+
+def test_build_prompt_surfaces_data_quality_notes() -> None:
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
+    selected = select_comparison_history(subject, [subject])
+    candidates = _candidate_evidence(subject, selected)
+
+    header = "DATA QUALITY NOTES (sets that could not be parsed"
+    without = _build_prompt(subject, selected, candidates, {})
+    assert header not in without
+
+    with_notes = _build_prompt(subject, selected, candidates, {"Chest Fly": 2})
+    assert header in with_notes
+    assert "Chest Fly" in with_notes
+    assert "2 performed sets" in with_notes
+    # The nudge to emit malformed_data is inline in the section, so it only appears
+    # for a session that actually has dropped sets — a clean session's prompt stays
+    # byte-identical to the pre-change (0.3.0) prompt.
+    inline = "you MUST add a 'malformed_data' limitation"
+    assert inline in with_notes
+    assert inline not in without
 
 
 def test_freeform_activity_still_offers_its_literal_sets_completed() -> None:
