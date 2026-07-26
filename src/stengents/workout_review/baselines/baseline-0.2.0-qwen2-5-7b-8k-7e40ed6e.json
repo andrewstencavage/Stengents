@@ -1,6 +1,6 @@
 {
-  "run_id": "6a393d4c-4ef4-47d4-b383-c5c204c80fa2",
-  "generated_at": "2026-07-26T19:52:23.727806+00:00",
+  "run_id": "6f009147-9904-44aa-9798-2f954da27465",
+  "generated_at": "2026-07-26T20:45:00.279604+00:00",
   "capability_version": "0.2.0",
   "model": {
     "provider": "openai-compatible",
@@ -13,11 +13,72 @@
   "aggregate": {
     "case_count": 12,
     "schema_valid_rate": 1.0,
-    "required_detail_recall": 0.7083333333333334,
+    "required_detail_recall": 0.6597222222222222,
+    "required_limitation_recall": 0.3333333333333333,
     "evidence_validity_rate": 1.0,
     "unsupported_claim_rate": 0.0,
-    "cases_passing": 5,
-    "cases_passing_rate": 0.4166666666666667
+    "cases_passing": 4,
+    "cases_passing_rate": 0.3333333333333333
+  },
+  "gate": {
+    "passed": true,
+    "floors": [
+      {
+        "metric": "evidence_validity_rate",
+        "tier": "safety",
+        "comparator": ">=",
+        "value": 1.0,
+        "bound": 1.0,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      },
+      {
+        "metric": "unsupported_claim_rate",
+        "tier": "safety",
+        "comparator": "<=",
+        "value": 0.0,
+        "bound": 0.0,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      },
+      {
+        "metric": "schema_valid_rate",
+        "tier": "structural",
+        "comparator": ">=",
+        "value": 1.0,
+        "bound": 1.0,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      },
+      {
+        "metric": "required_detail_recall",
+        "tier": "quality",
+        "comparator": ">=",
+        "value": 0.6597222222222222,
+        "bound": 0.6,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      },
+      {
+        "metric": "required_limitation_recall",
+        "tier": "quality",
+        "comparator": ">=",
+        "value": 0.3333333333333333,
+        "bound": 0.33,
+        "raw_passed": true,
+        "retest_cleared": false,
+        "passed": true
+      }
+    ],
+    "retest": {
+      "performed": false,
+      "n": 3,
+      "cases": {}
+    }
   },
   "cases": [
     {
@@ -25,8 +86,8 @@
       "subject_workout_id": "c6fa004c-d9e7-5d77-a9a9-318f6140c453",
       "schema_valid": true,
       "schema_error": null,
-      "cited_evidence_total": 7,
-      "cited_evidence_valid": 7,
+      "cited_evidence_total": 10,
+      "cited_evidence_valid": 10,
       "invalid_evidence": [],
       "required_detail_total": 3,
       "required_detail_matched": 3,
@@ -91,30 +152,12 @@
       "subject_workout_id": "2127b61f-a2b7-5dd0-a98c-607b3e6ba69b",
       "schema_valid": true,
       "schema_error": null,
-      "cited_evidence_total": 5,
-      "cited_evidence_valid": 5,
+      "cited_evidence_total": 6,
+      "cited_evidence_valid": 6,
       "invalid_evidence": [],
       "required_detail_total": 3,
-      "required_detail_matched": 0,
+      "required_detail_matched": 2,
       "missing_required_evidence": [
-        [
-          "set",
-          "2127b61f-a2b7-5dd0-a98c-607b3e6ba69b",
-          "Lat Pulldown",
-          0,
-          9,
-          3,
-          "plate"
-        ],
-        [
-          "set",
-          "51a5999e-086e-5410-99d5-f2320d4f6bbe",
-          "Lat Pulldown",
-          0,
-          11,
-          4,
-          "plate"
-        ],
         [
           "set",
           "36352830-5cdb-502c-82c5-7c21da91b7cc",
@@ -133,7 +176,7 @@
       "unsupported_observations": 0,
       "unsupported_reasons": [],
       "metrics": {
-        "required_detail_recall": 0.0,
+        "required_detail_recall": 0.6666666666666666,
         "evidence_validity_rate": 1.0,
         "unsupported_claim_rate": 0.0
       },
@@ -152,12 +195,29 @@
       "subject_workout_id": "b95452e9-f63e-54bc-8d3c-46b1ab704cee",
       "schema_valid": true,
       "schema_error": null,
-      "cited_evidence_total": 3,
-      "cited_evidence_valid": 3,
+      "cited_evidence_total": 7,
+      "cited_evidence_valid": 7,
       "invalid_evidence": [],
       "required_detail_total": 2,
-      "required_detail_matched": 2,
-      "missing_required_evidence": [],
+      "required_detail_matched": 0,
+      "missing_required_evidence": [
+        [
+          "set",
+          "b95452e9-f63e-54bc-8d3c-46b1ab704cee",
+          "Hack Squat",
+          0,
+          8,
+          4,
+          "plate"
+        ],
+        [
+          "fact",
+          "b95452e9-f63e-54bc-8d3c-46b1ab704cee",
+          "Hack Squat",
+          "note",
+          "squat rack taken, subbed hack squat"
+        ]
+      ],
       "required_limitations_total": 1,
       "required_limitations_matched": 1,
       "missing_limitations": [],
@@ -166,27 +226,27 @@
       "unsupported_observations": 0,
       "unsupported_reasons": [],
       "metrics": {
-        "required_detail_recall": 1.0,
+        "required_detail_recall": 0.0,
         "evidence_validity_rate": 1.0,
         "unsupported_claim_rate": 0.0
       },
       "checks": {
         "schema_valid": true,
         "all_evidence_valid": true,
-        "all_required_detail_recalled": true,
+        "all_required_detail_recalled": false,
         "all_required_limitations_present": true,
         "no_forbidden_observations": true,
         "no_unsupported_claims": true
       },
-      "passed": true
+      "passed": false
     },
     {
       "case_id": "c05-incomplete-workout",
       "subject_workout_id": "7137d664-e717-535a-8fb4-dc831ef3f151",
       "schema_valid": true,
       "schema_error": null,
-      "cited_evidence_total": 5,
-      "cited_evidence_valid": 5,
+      "cited_evidence_total": 3,
+      "cited_evidence_valid": 3,
       "invalid_evidence": [],
       "required_detail_total": 2,
       "required_detail_matched": 0,
@@ -215,7 +275,7 @@
         ]
       ],
       "forbidden_present": [],
-      "observation_total": 2,
+      "observation_total": 1,
       "unsupported_observations": 0,
       "unsupported_reasons": [],
       "metrics": {
@@ -356,8 +416,17 @@
       "cited_evidence_valid": 4,
       "invalid_evidence": [],
       "required_detail_total": 4,
-      "required_detail_matched": 2,
+      "required_detail_matched": 1,
       "missing_required_evidence": [
+        [
+          "set",
+          "c0c84df5-e20f-5349-b8f0-d4f5a0e8116f",
+          "Incline Press",
+          0,
+          6,
+          4,
+          "plate"
+        ],
         [
           "set",
           "4d4c181a-4a34-5d6e-baa8-67e58e43570d",
@@ -385,7 +454,7 @@
       "unsupported_observations": 0,
       "unsupported_reasons": [],
       "metrics": {
-        "required_detail_recall": 0.5,
+        "required_detail_recall": 0.25,
         "evidence_validity_rate": 1.0,
         "unsupported_claim_rate": 0.0
       },
