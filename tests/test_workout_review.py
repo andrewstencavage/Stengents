@@ -11,8 +11,10 @@ from stengents.workout_review import (
     WorkoutReview,
     review_workout,
 )
+from stengents.workout_review.grounding import Grounding
 from stengents.workout_review.review import (
     _candidate_evidence,
+    _resolve_evidence,
     select_comparison_history,
 )
 
@@ -349,3 +351,47 @@ def test_candidate_evidence_is_grounded_in_subject_and_history() -> None:
     assert set_ids == {"subj", "prior"}  # both subject and history sets are citable
     assert any(isinstance(e, FactEvidence) and e.field == "note" and e.value == "strong" for e in candidates)
     assert any(isinstance(e, FactEvidence) and e.exercise is None and e.field == "feel" for e in candidates)
+
+
+def test_structured_activity_offers_no_derived_sets_completed_candidate() -> None:
+    # A structured activity's count is derived from performedSets, which the
+    # evaluator never resolves against a synthesised ``sets_completed`` value; the
+    # sets themselves are the grounded citation. So no such candidate is offered.
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0), (8, 3.0), (7, 3.0)])])
+    candidates = _candidate_evidence(subject, select_comparison_history(subject, [subject]))
+
+    assert not any(isinstance(e, FactEvidence) and e.field == "sets_completed" for e in candidates)
+    # ...and every candidate that IS offered grounds verbatim in the real data.
+    grounding = Grounding([subject])
+    assert all(grounding.resolves(e) for e in candidates)
+    subject_sets = [e for e in candidates if isinstance(e, SetEvidence) and e.workout_id == "subj"]
+    assert len(subject_sets) == 3  # the count is citable one-per-set, not as a fact
+
+
+def test_freeform_activity_still_offers_its_literal_sets_completed() -> None:
+    # A freeform activity (no performedSets) carries ``sets_completed`` as a real
+    # field, which grounds — that candidate must still be offered.
+    freeform = {"name": "Warmup Row", "spec": "5 min easy", "sets_completed": 1}
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [freeform])
+    candidates = _candidate_evidence(subject, select_comparison_history(subject, [subject]))
+
+    matches = [e for e in candidates if isinstance(e, FactEvidence) and e.field == "sets_completed"]
+    assert [e.value for e in matches] == ["1"]
+    assert Grounding([subject]).resolves(matches[0])
+
+
+def test_resolvability_guard_drops_a_cited_row_that_does_not_ground() -> None:
+    # The self-detectable rejection: even if an ungroundable row were offered as a
+    # candidate, decode must never surface it — only rows that resolve survive.
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
+    grounding = Grounding([subject])
+    candidates = _candidate_evidence(subject, select_comparison_history(subject, [subject]))
+
+    bogus = SetEvidence(workout_id="subj", exercise="Cable Squat", set_index=99, reps=1, load=999.0, loadType="plate")
+    candidates = [*candidates, bogus]
+    bogus_id = len(candidates)  # ids are 1-based
+
+    resolved = _resolve_evidence([1, bogus_id], candidates, grounding)
+
+    assert bogus not in resolved  # the ungroundable row is dropped
+    assert resolved == [candidates[0]]  # the grounded row (candidate 1) survives

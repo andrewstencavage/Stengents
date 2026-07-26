@@ -33,6 +33,7 @@ from .contract import (
     SetEvidence,
     WorkoutReview,
 )
+from .grounding import Grounding, as_text
 
 # The review capability wants the same larger tool-calling model kiln_coach uses.
 DEFAULT_MODEL_NAME = "qwen2.5:7b-8k"
@@ -105,6 +106,7 @@ def _generate_review(
     selected = select_comparison_history(session, pool)
     candidates = _candidate_evidence(session, selected)
     history_limits = _history_limitations(selected)
+    grounding = review_grounding(session, selected)
 
     prompt = _build_prompt(session, selected, candidates)
     try:
@@ -118,7 +120,7 @@ def _generate_review(
     summary = ""
     if isinstance(parsed, dict):
         summary = parsed.get("summary") if isinstance(parsed.get("summary"), str) else ""
-        observations = _decode_observations(parsed.get("observations"), candidates, selected)
+        observations = _decode_observations(parsed.get("observations"), candidates, selected, grounding)
         model_limits = _decode_limitations(parsed.get("limitations"))
 
     if not summary:
@@ -180,6 +182,18 @@ def select_comparison_history(session: dict, pool: list[dict]) -> dict[str, list
                 break
         history[name] = priors
     return history
+
+
+def review_grounding(session: dict, selected: dict[str, list[dict]]) -> Grounding:
+    """Grounding over the pool a review's evidence must resolve against.
+
+    That pool is the subject Session plus every prior Session its comparison
+    history was drawn from — the exact set every candidate is built from, so
+    every candidate (and every cited row) grounds against it. Shared with the
+    corpus test so production and test can't drift on what that pool is.
+    """
+    pool = [session, *(prior["session"] for priors in selected.values() for prior in priors)]
+    return Grounding(pool)
 
 
 def _history_limitations(selected: dict[str, list[dict]]) -> list[Limitation]:
@@ -253,7 +267,6 @@ def _session_facts(workout_id: str, session: dict) -> list[Evidence]:
 
 
 def _activity_facts(workout_id: str, exercise: str | None, activity: dict) -> list[Evidence]:
-    performed = activity.get("performedSets") or []
     prescribed = ((activity.get("plannedActivity") or {}).get("prescribedSets")) or []
     pairs: dict[str, object] = {
         "note": activity.get("note"),
@@ -261,9 +274,14 @@ def _activity_facts(workout_id: str, exercise: str | None, activity: dict) -> li
     }
     if activity.get("skipped"):
         pairs["skipped"] = True
-    if performed:
-        pairs["sets_completed"] = len(performed)
-    elif activity.get("sets_completed") is not None:
+    # Only a *literal* ``sets_completed`` field grounds — that's what grounding
+    # (and the evaluator) resolve it against. A structured activity's count is
+    # derived from its ``performedSets``, which are already citable one-per-row as
+    # SetEvidence; synthesising ``sets_completed = len(performedSets)`` here
+    # manufactured a candidate that could never resolve, and the model citing it
+    # was the sole source of the baseline's unsupported claims. So offer it only
+    # when Kiln actually carries the field (freeform activities).
+    if activity.get("sets_completed") is not None:
         pairs["sets_completed"] = activity.get("sets_completed")
     if prescribed:
         pairs["planned_sets"] = len(prescribed)
@@ -281,7 +299,10 @@ def _facts(workout_id: str, exercise: str | None, pairs: dict) -> list[Evidence]
                     workout_id=workout_id,
                     exercise=exercise,
                     field=field,
-                    value=str(value),
+                    # Render through the shared ``as_text`` so a value grounds
+                    # against what the evaluator resolves it to — a Python bool is
+                    # JSON-cased ("true"), never str()'s "True".
+                    value=as_text(value),
                 )
             )
         except Exception:  # noqa: BLE001 — skip an out-of-vocabulary field.
@@ -379,10 +400,14 @@ def _decode_observations(
     raw_observations: object,
     candidates: list[Evidence],
     selected: dict[str, list[dict]],
+    grounding: Grounding,
 ) -> list[Observation]:
     """Decode the model's observations, grounding each cited id to a real row.
 
-    An observation survives only if it cites at least one valid candidate id. A
+    An observation survives only if it cites at least one candidate id that
+    *grounds* verbatim in the real data (the self-detectable resolvability guard:
+    a cited row that does not resolve is dropped, so no unresolvable row ever
+    reaches the scored review — the same check the evaluator applies). A
     ``progression`` observation must additionally cite at least one *prior*
     (history) set — #19 forbids a progression claim without a comparison, so an
     exercise with zero priors (no prior sets to cite) can never carry one; its
@@ -398,7 +423,7 @@ def _decode_observations(
     for item in raw_observations:
         if not isinstance(item, dict):
             continue
-        evidence = _resolve_evidence(item.get("evidence_ids"), candidates)
+        evidence = _resolve_evidence(item.get("evidence_ids"), candidates, grounding)
         if not evidence:
             continue
 
@@ -430,7 +455,9 @@ def _decode_observations(
     return decoded
 
 
-def _resolve_evidence(raw_ids: object, candidates: list[Evidence]) -> list[Evidence]:
+def _resolve_evidence(
+    raw_ids: object, candidates: list[Evidence], grounding: Grounding
+) -> list[Evidence]:
     if not isinstance(raw_ids, list):
         return []
     resolved: list[Evidence] = []
@@ -440,8 +467,11 @@ def _resolve_evidence(raw_ids: object, candidates: list[Evidence]) -> list[Evide
             continue
         index = raw_id - 1  # ids are 1-based in the prompt.
         if 0 <= index < len(candidates) and index not in seen:
+            candidate = candidates[index]
+            if not grounding.resolves(candidate):
+                continue  # guard: never surface a row that doesn't ground verbatim.
             seen.add(index)
-            resolved.append(candidates[index])
+            resolved.append(candidate)
     return resolved
 
 

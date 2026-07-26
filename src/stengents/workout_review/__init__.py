@@ -9,7 +9,12 @@ contract types.
 # every benchmark artifact so a recorded score is tied to the capability that
 # produced it. Bump on a meaningful capability change (e.g. a prompt revision or
 # the revise-once loop landing).
-CAPABILITY_VERSION = "0.1.0"
+#
+# 0.2.0 — offer the model only groundable evidence candidates: drop the derived
+#   ``sets_completed`` candidate, render fact values via the shared ``as_text``,
+#   and guard decode against ungroundable citations. Changes the candidate set,
+#   so its benchmark run is a distinct baseline from 0.1.0's.
+CAPABILITY_VERSION = "0.2.0"
 
 from .contract import (
     Category,
