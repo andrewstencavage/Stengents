@@ -6,6 +6,10 @@ import asyncio
 import time
 from typing import Callable
 
+from google.adk.models.llm_request import LlmRequest
+from google.adk.models.lite_llm import LiteLlm
+from google.genai import types
+
 from ..harness import Actions, Fixture, RunBudgetExceeded
 from ..utilities.model_source import ModelConnection
 
@@ -51,22 +55,37 @@ def _required_discovery_tool(actions: Actions) -> str | None:
     return None
 
 
+def _constrain_to_tool(request: LlmRequest, model: object, tool_name: str | None, original: object | None) -> None:
+    """Translate the discovery gate to the active ADK model adapter."""
+    if isinstance(model, LiteLlm):
+        if tool_name is None:
+            model._additional_args.pop("tool_choice", None)
+        else:
+            model._additional_args["tool_choice"] = {"type": "function", "function": {"name": tool_name}}
+        return
+    request.config.tool_config = original if tool_name is None else types.ToolConfig(
+        function_calling_config=types.FunctionCallingConfig(
+            mode="ANY", allowed_function_names=[tool_name]
+        )
+    )
+
+
 def adk_driver(connection: ModelConnection) -> Callable[[Actions], None]:
-    """Create the coding agent over the portable LiteLLM adapter."""
+    """Create the coding agent over the portable model connection."""
     def drive(actions: Actions) -> None:
         from google.adk.agents import LlmAgent
         from google.adk.runners import Runner
         from google.adk.sessions import InMemorySessionService
-        from google.genai import types
-
         model = connection.llm
+        original_tool_config: object | None = None
+        captured_tool_config = False
 
-        def require_discovery_tool(*, callback_context: object, llm_request: object) -> None:
-            required_tool = _required_discovery_tool(actions)
-            if required_tool is None:
-                model._additional_args.pop("tool_choice", None)
-            else:
-                model._additional_args["tool_choice"] = {"type": "function", "function": {"name": required_tool}}
+        def require_discovery_tool(*, callback_context: object, llm_request: LlmRequest) -> None:
+            nonlocal captured_tool_config, original_tool_config
+            if not captured_tool_config:
+                original_tool_config = llm_request.config.tool_config
+                captured_tool_config = True
+            _constrain_to_tool(llm_request, model, _required_discovery_tool(actions), original_tool_config)
 
         agent = LlmAgent(
             name="coding_agent",

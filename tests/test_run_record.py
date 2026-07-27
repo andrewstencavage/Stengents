@@ -9,7 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from stengents.coding_agent.agent import RunCapturePlugin, _agent_instruction, _required_discovery_tool
+from google.adk.models import Gemini
+from google.adk.models.llm_request import LlmRequest
+from google.adk.models.lite_llm import LiteLlm
+
+from stengents.coding_agent.agent import RunCapturePlugin, _agent_instruction, _constrain_to_tool, _required_discovery_tool
 from stengents.harness import (
     Actions,
     Fixture,
@@ -202,6 +206,31 @@ def test_required_discovery_tool_forces_listing_then_reading(tmp_path: Path) -> 
     assert _required_discovery_tool(actions) == "read_file"
     actions.read_file("source.py")
     assert _required_discovery_tool(actions) is None
+
+
+def test_discovery_constraint_uses_the_provider_neutral_request_config() -> None:
+    request = LlmRequest()
+
+    original = request.config.tool_config
+    _constrain_to_tool(request, Gemini(model="gemini-3.6-flash"), "list_files", original)
+
+    config = request.config.tool_config.function_calling_config
+    assert config.mode == "ANY"
+    assert config.allowed_function_names == ["list_files"]
+
+    _constrain_to_tool(request, Gemini(model="gemini-3.6-flash"), None, original)
+    assert request.config.tool_config is None
+
+
+def test_discovery_constraint_keeps_litellm_tool_choice_behavior() -> None:
+    request = LlmRequest()
+    model = LiteLlm(model="openai/test", api_base="http://gym/v1", api_key="local")
+
+    _constrain_to_tool(request, model, "list_files", None)
+    assert model._additional_args["tool_choice"] == {"type": "function", "function": {"name": "list_files"}}
+
+    _constrain_to_tool(request, model, None, None)
+    assert "tool_choice" not in model._additional_args
 
 
 def test_run_fixture_distinguishes_a_harness_error_from_a_fixture_failure(tmp_path: Path) -> None:
