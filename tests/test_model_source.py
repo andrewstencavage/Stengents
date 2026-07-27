@@ -58,6 +58,48 @@ def test_as_record_is_credential_free() -> None:
     assert "base_url" not in record and "api_key" not in record and "secret" not in record.values()
 
 
+def test_resolve_model_builds_a_google_ai_studio_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STENGENTS_MODEL_PROVIDER", "google-ai-studio")
+    monkeypatch.setenv("STENGENTS_MODEL_NAME", "gemini-2.5-flash")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-secret")
+
+    connection = resolve_model("")
+
+    assert connection.provider == "google-ai-studio"
+    assert connection.llm.model == "gemini/gemini-2.5-flash"
+    assert connection.as_record() == {
+        "provider": "google-ai-studio",
+        "name": "gemini-2.5-flash",
+    }
+    assert "gemini-secret" not in connection.as_record().values()
+
+
+def test_gemini_preflight_checks_only_for_an_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STENGENTS_MODEL_PROVIDER", "google-ai-studio")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-secret")
+    connection = resolve_model("gemini-2.5-flash")
+
+    def opener(*_args, **_kwargs):
+        raise AssertionError("Gemini preflight must not make a request")
+
+    assert connection.preflight(opener=opener) is None
+
+
+def test_resolve_model_reads_the_rate_limit_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STENGENTS_RATE_LIMIT_ON_RATE_LIMIT", "fail")
+    monkeypatch.setenv("STENGENTS_RATE_LIMIT_MAX_ATTEMPTS", "2")
+    monkeypatch.setenv("STENGENTS_RATE_LIMIT_MAX_CUMULATIVE_WAIT_SECONDS", "15")
+
+    connection = resolve_model("llama3.1:8b")
+
+    assert connection.rate_limit_policy.as_record() == {
+        "on_rate_limit": "fail",
+        "max_attempts": 2,
+        "max_cumulative_wait_seconds": 15,
+        "paid_fallback": False,
+    }
+
+
 # --- preflight (driven through a fake opener, no network) ----------------
 
 class _Response:

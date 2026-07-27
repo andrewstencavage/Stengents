@@ -57,7 +57,14 @@ def _run_command(fixture_id: str, model_override: str | None) -> int:
     run_id = str(uuid.uuid4())
     record_path = run_directory / f"{run_id}.json"
     print(json.dumps({"run_id": run_id, "fixture_id": fixture.identifier, "model": connection.as_record(), "action_limit": 25, "elapsed_time_limit_seconds": 300, "record_path": str(record_path)}))
-    record_path, exit_code = run_fixture(fixture, run_directory=run_directory, model=connection.as_record(), agent_driver=adk_driver(connection), run_id=run_id)
+    record_path, exit_code = run_fixture(
+        fixture,
+        run_directory=run_directory,
+        model=connection.as_record(),
+        agent_driver=adk_driver(connection),
+        run_id=run_id,
+        rate_limit_policy=connection.rate_limit_policy,
+    )
     print(json.dumps({"record_path": str(record_path), "outcome": RunOutcome.from_exit_code(exit_code).value}))
     return exit_code
 

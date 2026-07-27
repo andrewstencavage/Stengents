@@ -15,14 +15,18 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from google.adk.models.lite_llm import LiteLlm
 
-PROVIDER = "openai-compatible"
+from .rate_limit import RateLimitPolicy
+
+OPENAI_COMPATIBLE_PROVIDER = "openai-compatible"
+GOOGLE_AI_STUDIO_PROVIDER = "google-ai-studio"
+_PROVIDERS = frozenset({OPENAI_COMPATIBLE_PROVIDER, GOOGLE_AI_STUDIO_PROVIDER})
 
 # A minimal urlopen-shaped opener: called with (url_or_request, timeout) and
 # returning a context manager whose value is read as the HTTP response body.
@@ -37,6 +41,15 @@ def _resolve(suffix: str, fallback: str) -> str:
     return os.environ.get(f"STENGENTS_MODEL_{suffix}", fallback)
 
 
+def _resolve_rate_limit_policy() -> RateLimitPolicy:
+    return RateLimitPolicy(
+        on_rate_limit=os.environ.get("STENGENTS_RATE_LIMIT_ON_RATE_LIMIT", "wait"),
+        max_attempts=int(os.environ.get("STENGENTS_RATE_LIMIT_MAX_ATTEMPTS", "1")),
+        max_cumulative_wait_seconds=int(os.environ.get("STENGENTS_RATE_LIMIT_MAX_CUMULATIVE_WAIT_SECONDS", "30")),
+        paid_fallback=os.environ.get("STENGENTS_RATE_LIMIT_PAID_FALLBACK", "false").lower() == "true",
+    )
+
+
 @dataclass(frozen=True)
 class ModelConnection:
     """A resolved connection to one model on the development-time endpoint."""
@@ -44,13 +57,17 @@ class ModelConnection:
     name: str
     base_url: str
     api_key: str
+    resolved_provider: str = OPENAI_COMPATIBLE_PROVIDER
+    rate_limit_policy: RateLimitPolicy = field(default_factory=RateLimitPolicy)
 
     @property
     def provider(self) -> str:
-        return PROVIDER
+        return self.resolved_provider
 
     @property
     def llm(self) -> LiteLlm:
+        if self.provider == GOOGLE_AI_STUDIO_PROVIDER:
+            return LiteLlm(model=f"gemini/{self.name}", api_key=self.api_key)
         return LiteLlm(
             model=f"openai/{self.name}",
             api_base=f"{self.base_url.rstrip('/')}/v1",
@@ -68,6 +85,10 @@ class ModelConnection:
         if any check fails. ``opener`` is injectable so this is testable without
         a live endpoint.
         """
+        if self.provider == GOOGLE_AI_STUDIO_PROVIDER:
+            if not self.api_key:
+                raise ModelSourceUnavailable("gemini_api_key_missing")
+            return
         root = self.base_url.rstrip("/")
         try:
             with opener(f"{root}/v1/models", timeout=5) as response:
@@ -106,8 +127,14 @@ def resolve_model(default_name: str, *, name: str | None = None) -> ModelConnect
     missing selection via an empty ``ModelConnection.name``.
     """
 
+    provider = _resolve("PROVIDER", OPENAI_COMPATIBLE_PROVIDER)
+    if provider not in _PROVIDERS:
+        raise ValueError(f"unsupported_model_provider: {provider}")
+    api_key = os.environ.get("GEMINI_API_KEY", "") if provider == GOOGLE_AI_STUDIO_PROVIDER else _resolve("API_KEY", "local")
     return ModelConnection(
         name=name or _resolve("NAME", default_name),
         base_url=_resolve("BASE_URL", "http://127.0.0.1:11434"),
-        api_key=_resolve("API_KEY", "local"),
+        api_key=api_key,
+        resolved_provider=provider,
+        rate_limit_policy=_resolve_rate_limit_policy(),
     )

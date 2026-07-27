@@ -49,6 +49,11 @@ harness or the environment, do not read the run as a score of `2`.
   backstop for genuinely unhandled harness faults, not the primary mechanism.
   If it ever fires for an agent behaviour, that behaviour belongs in a named
   action's rejection path instead.
+- A recognized, policy-handled provider rate limit is an exception to neither
+  boundary nor truthfulness: it is a recorded `failed` model attempt because
+  the configured free-tier execution policy deliberately gives a fair,
+  bounded verdict (`wait` retries only within its cap; `fail` stops at once).
+  An unrecognized endpoint failure remains `harness_failed`.
 - The backstop is still slightly too broad in one direction: it does not
   distinguish an *environment* failure (a mid-run endpoint drop, e.g.
   `ConnectionError`) from a *harness-code* bug. Both are correctly kept out of

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class RunOutcome(Enum):
@@ -76,6 +76,7 @@ def build_run_record(
     tool_events: list[dict[str, object]],
     artifacts: list[dict[str, str]],
     verification: dict[str, object],
+    rate_limit: dict[str, object] | None = None,
 ) -> tuple[dict[str, object], RunOutcome]:
     """Assemble one Run record and derive its outcome (pure).
 
@@ -98,5 +99,6 @@ def build_run_record(
         "artifacts": artifacts,
         "outcome": outcome.value,
         "verification": verification,
+        "rate_limit": rate_limit,
     }
     return record, outcome

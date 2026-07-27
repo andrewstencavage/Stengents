@@ -14,6 +14,7 @@ from typing import Callable, TypeVar
 
 from .run_record import build_run_record
 from .utilities.observation import reduce_value
+from .utilities.rate_limit import RateLimitExhausted, RateLimitPolicy, execute_with_rate_limit
 
 
 T = TypeVar("T")
@@ -119,6 +120,8 @@ def run_fixture(
     agent_driver: Callable[[Actions], None],
     budget: RunBudget = RunBudget(),
     run_id: str | None = None,
+    rate_limit_policy: RateLimitPolicy = RateLimitPolicy(max_attempts=1),
+    sleep: Callable[[float], None] | None = None,
 ) -> tuple[Path, int]:
     """Run one fixture in an ephemeral copy and atomically persist its record."""
     run_id = run_id or str(uuid.uuid4())
@@ -126,14 +129,26 @@ def run_fixture(
     started = time.monotonic()
     run_directory.mkdir(parents=True, exist_ok=True)
     verification: dict[str, object] = {"command": list(fixture.verifier), "exit_code": None, "passed": False}
+    rate_limit: dict[str, object] = {
+        "policy": rate_limit_policy.as_record(),
+        "classification": None,
+        "attempts": 0,
+        "retries": 0,
+        "cumulative_wait_seconds": 0,
+    }
     with tempfile.TemporaryDirectory(prefix=f"stengents-{fixture.identifier}-") as workspace:
         root = Path(workspace) / fixture.identifier
         shutil.copytree(fixture.root, root, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         actions = Actions(root, fixture, budget, started)
         try:
-            agent_driver(actions)
+            _result, rate_limit = execute_with_rate_limit(
+                lambda: agent_driver(actions), policy=rate_limit_policy, sleep=sleep or time.sleep
+            )
             completed = subprocess.run(fixture.verifier, cwd=root, capture_output=True, text=True, timeout=budget.elapsed_seconds, check=False)
             verification.update(exit_code=completed.returncode, passed=completed.returncode == 0)
+        except RateLimitExhausted as error:
+            rate_limit = error.report
+            verification["rate_limited"] = True
         except RunBudgetExceeded as error:
             verification["error"] = str(error)
             verification["budget_exhausted"] = True
@@ -151,6 +166,7 @@ def run_fixture(
             tool_events=actions.events,
             artifacts=artifacts,
             verification=verification,
+            rate_limit=rate_limit,
         )
     record_path = run_directory / f"{run_id}.json"
     temporary_path = record_path.with_suffix(".tmp")

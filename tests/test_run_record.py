@@ -17,6 +17,7 @@ from stengents.harness import (
     run_fixture,
 )
 from stengents.run_record import RunOutcome, build_run_record, derive_outcome
+from stengents.utilities.rate_limit import RateLimitPolicy
 
 
 def test_run_capture_plugin_callbacks_are_awaitable(tmp_path: Path) -> None:
@@ -78,7 +79,7 @@ def test_run_fixture_writes_a_passing_record_after_the_agent_repairs_the_source(
 
     record = json.loads(record_path.read_text())
     assert exit_code == 0
-    assert record["schema_version"] == 3
+    assert record["schema_version"] == 4
     assert record["outcome"] == "passed"
     assert record["fixture"]["id"] == "normalize-index"
     assert record["model"] == {"provider": "openai-compatible", "name": "test-model"}
@@ -220,6 +221,150 @@ def test_run_fixture_distinguishes_a_harness_error_from_a_fixture_failure(tmp_pa
     assert json.loads(record_path.read_text())["verification"]["harness_failed"] is True
 
 
+class _GeminiRateLimitError(RuntimeError):
+    status_code = 429
+    body = {
+        "error": {
+            "details": [
+                {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [{"quotaId": "PerMinute"}]}
+            ]
+        }
+    }
+
+
+class _GeminiDailyRateLimitError(_GeminiRateLimitError):
+    body = {
+        "error": {
+            "details": [
+                {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [{"quotaId": "PerDay"}]}
+            ]
+        }
+    }
+
+
+class _GeminiUnknownRateLimitError(_GeminiRateLimitError):
+    body = {"error": {}}
+
+
+def _normalize_index_fixture() -> Fixture:
+    root = Path(__file__).parents[1] / "src" / "stengents" / "fixtures" / "normalize-index"
+    return Fixture("normalize-index", root, ("normalize_index.py",), (sys.executable, "-m", "pytest", "-q"))
+
+
+def _repair_normalize_index(actions) -> None:
+    actions.write_source_file(
+        "normalize_index.py",
+        "def normalize_index(items, index):\n"
+        "    if index < 0 or index >= len(items):\n"
+        "        raise IndexError(index)\n"
+        "    return items[index]\n",
+    )
+
+
+def test_run_fixture_retries_an_injected_transient_gemini_limit_within_its_bound(tmp_path: Path) -> None:
+    fixture = _normalize_index_fixture()
+    attempts = 0
+    waits: list[float] = []
+
+    def agent(_actions) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise _GeminiRateLimitError()
+        _repair_normalize_index(_actions)
+
+    record_path, exit_code = run_fixture(
+        fixture,
+        run_directory=tmp_path / "runs",
+        model={"provider": "google-ai-studio", "name": "gemini-2.5-flash"},
+        agent_driver=agent,
+        rate_limit_policy=RateLimitPolicy(on_rate_limit="wait", max_attempts=2, max_cumulative_wait_seconds=2),
+        sleep=waits.append,
+    )
+
+    record = json.loads(record_path.read_text())
+    assert exit_code == 0
+    assert attempts == 2
+    assert waits == [1]
+    assert record["rate_limit"] == {
+        "policy": {"on_rate_limit": "wait", "max_attempts": 2, "max_cumulative_wait_seconds": 2, "paid_fallback": False},
+        "classification": "per-minute",
+        "attempts": 2,
+        "retries": 1,
+        "cumulative_wait_seconds": 1,
+    }
+
+
+def test_run_fixture_records_an_injected_gemini_limit_as_a_deterministic_failure(tmp_path: Path) -> None:
+    fixture = _normalize_index_fixture()
+
+    def agent(_actions) -> None:
+        raise _GeminiRateLimitError()
+
+    record_path, exit_code = run_fixture(
+        fixture,
+        run_directory=tmp_path / "runs",
+        model={"provider": "google-ai-studio", "name": "gemini-2.5-flash"},
+        agent_driver=agent,
+        rate_limit_policy=RateLimitPolicy(on_rate_limit="fail", max_attempts=1, max_cumulative_wait_seconds=2),
+    )
+
+    record = json.loads(record_path.read_text())
+    assert exit_code == 1
+    assert record["outcome"] == "failed"
+    assert record["verification"]["rate_limited"] is True
+    assert record["rate_limit"]["classification"] == "per-minute"
+    assert record["rate_limit"]["retries"] == 0
+
+
+def test_run_fixture_never_retries_an_injected_daily_gemini_limit(tmp_path: Path) -> None:
+    waits: list[float] = []
+
+    def agent(_actions) -> None:
+        raise _GeminiDailyRateLimitError()
+
+    record_path, exit_code = run_fixture(
+        _normalize_index_fixture(),
+        run_directory=tmp_path / "runs",
+        model={"provider": "google-ai-studio", "name": "gemini-2.5-flash"},
+        agent_driver=agent,
+        rate_limit_policy=RateLimitPolicy(on_rate_limit="wait", max_attempts=2, max_cumulative_wait_seconds=2),
+        sleep=waits.append,
+    )
+
+    record = json.loads(record_path.read_text())
+    assert exit_code == 1
+    assert waits == []
+    assert record["rate_limit"]["classification"] == "per-day"
+    assert record["rate_limit"]["attempts"] == 1
+
+
+def test_run_fixture_bounds_an_unknown_gemini_limit_then_fails(tmp_path: Path) -> None:
+    attempts = 0
+    waits: list[float] = []
+
+    def agent(_actions) -> None:
+        nonlocal attempts
+        attempts += 1
+        raise _GeminiUnknownRateLimitError()
+
+    record_path, exit_code = run_fixture(
+        _normalize_index_fixture(),
+        run_directory=tmp_path / "runs",
+        model={"provider": "google-ai-studio", "name": "gemini-2.5-flash"},
+        agent_driver=agent,
+        rate_limit_policy=RateLimitPolicy(on_rate_limit="wait", max_attempts=2, max_cumulative_wait_seconds=1),
+        sleep=waits.append,
+    )
+
+    record = json.loads(record_path.read_text())
+    assert exit_code == 1
+    assert attempts == 2
+    assert waits == [1]
+    assert record["rate_limit"]["classification"] == "unknown"
+    assert record["rate_limit"]["retries"] == 1
+
+
 # --- The Run record as a deep module: pure shape + outcome derivation --------
 
 
@@ -269,7 +414,7 @@ def test_build_run_record_stores_the_derived_outcome_and_full_shape() -> None:
     )
 
     assert outcome is RunOutcome.PASSED
-    assert record["schema_version"] == 3
+    assert record["schema_version"] == 4
     assert record["outcome"] == "passed"
     assert record["run_id"] == "run-1"
     assert record["harness"] == {"id": "stengents", "revision": "working-tree"}
