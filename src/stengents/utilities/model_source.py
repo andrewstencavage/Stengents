@@ -1,11 +1,10 @@
 """The development-time model source: one resolved connection to one model.
 
-Every agent and the coding harness talk to the same loopback model endpoint on
-`gym` over an OpenAI-compatible API; only the model name legitimately differs
-per caller (hello_world is happy on a small model, kiln_coach and the coding
-agent want a larger tool-calling one). Each caller passes its own default model
-name; the stable connection, the provider identity, the LiteLLM adapter, and the
-endpoint preflight all live here in one place.
+Every agent and the coding harness resolve one portable model connection. The
+development default is the loopback OpenAI-compatible endpoint on `gym`; Google
+AI Studio uses ADK's native Gemini adapter. Each caller passes its own default
+model name; the stable connection, provider identity, adapter construction, and
+provider-aware preflight all live here in one place.
 
 Resolution precedence for every field: ``STENGENTS_MODEL_*`` -> the fallback.
 The model name's fallback is the per-caller default the caller supplies.
@@ -21,6 +20,7 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from google.adk.models.lite_llm import LiteLlm
+from google.adk.models import Gemini
 
 from .rate_limit import RateLimitPolicy
 
@@ -65,9 +65,9 @@ class ModelConnection:
         return self.resolved_provider
 
     @property
-    def llm(self) -> LiteLlm:
+    def llm(self) -> LiteLlm | Gemini:
         if self.provider == GOOGLE_AI_STUDIO_PROVIDER:
-            return LiteLlm(model=f"gemini/{self.name}", api_key=self.api_key)
+            return Gemini(model=self.name)
         return LiteLlm(
             model=f"openai/{self.name}",
             api_base=f"{self.base_url.rstrip('/')}/v1",

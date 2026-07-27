@@ -5,6 +5,8 @@ from urllib.error import URLError
 from urllib.request import Request
 
 import pytest
+from google.adk.models import Gemini
+from google.adk.models.lite_llm import LiteLlm
 
 from stengents.utilities.model_source import ModelConnection, ModelSourceUnavailable, resolve_model
 
@@ -66,12 +68,23 @@ def test_resolve_model_builds_a_google_ai_studio_connection(monkeypatch: pytest.
     connection = resolve_model("")
 
     assert connection.provider == "google-ai-studio"
-    assert connection.llm.model == "gemini/gemini-2.5-flash"
+    model = connection.llm
+    assert isinstance(model, Gemini)
+    assert model.model == "gemini-2.5-flash"
     assert connection.as_record() == {
         "provider": "google-ai-studio",
         "name": "gemini-2.5-flash",
     }
     assert "gemini-secret" not in connection.as_record().values()
+
+
+def test_openai_compatible_connection_keeps_its_litellm_adapter() -> None:
+    connection = ModelConnection("qwen2.5:7b-8k", "http://gym:11434", "secret")
+
+    model = connection.llm
+
+    assert isinstance(model, LiteLlm)
+    assert model.model == "openai/qwen2.5:7b-8k"
 
 
 def test_gemini_preflight_checks_only_for_an_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
