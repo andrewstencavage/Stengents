@@ -98,6 +98,17 @@ diagnosing a fail, check each floor's `raw_passed` vs `passed` and `kind`.
    intended reference (e.g. a floor ratcheted up). Baselines are per
    (capability, model, corpus).
 
+**Discard interrupted runs.** A run whose connection to the endpoint is broken
+mid-flight — laptop suspend dropping the SSH tunnel, a network drop, a partial
+response — truncates its generations and scores a spuriously low
+`required_detail_recall` (observed as low as ~0.15 vs. a stable ~0.66), which can
+read gate=FAIL for a reason unrelated to the capability. Re-run on a stable, quiet
+connection before trusting a low score, and never record a baseline from a run you
+had to interrupt. Controlled testing found no reproducible endpoint-load-state dip
+otherwise — including two genuinely concurrent runs, which both passed
+([#42](https://github.com/andrewstencavage/Stengents/issues/42), closed as
+inconsistent).
+
 ## Corpus
 
 12 cases under [`benchmark/`](src/stengents/workout_review/benchmark), each a dir
