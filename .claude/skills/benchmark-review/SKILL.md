@@ -88,6 +88,10 @@ diagnosing a fail, check each floor's `raw_passed` vs `passed` and `kind`.
 
 ## The tune loop
 
+> Making the capability change itself — when to bump `CAPABILITY_VERSION`, the
+> changelog format, running a clean A/B — is the **tune-capability** skill. This
+> section is just the operate-side of the loop.
+
 1. Run the benchmark; read `gate.passed` and the per-floor report in the artifact.
 2. Diff the run's aggregate against the current baseline for the same
    `(capability_version, model, corpus_hash)` triple — a differing `corpus_hash`
