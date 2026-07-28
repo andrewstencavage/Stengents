@@ -35,18 +35,23 @@ class RateLimitExhausted(RuntimeError):
 
 
 def _classification(error: Exception) -> str | None:
-    if getattr(error, "status_code", None) != 429 and type(error).__name__ != "RateLimitError":
+    text = f"{getattr(error, 'body', '')!r} {error}"
+    if (
+        getattr(error, "status_code", None) != 429
+        and type(error).__name__ != "RateLimitError"
+        and "429 RESOURCE_EXHAUSTED" not in text
+    ):
         return None
-    text = repr(getattr(error, "body", error))
-    if "PerDay" in text:
+    if "PerDay" in text or "PerDayPerProject" in text:
         return "per-day"
-    if "PerMinute" in text:
+    if "PerMinute" in text or "PerMinutePerProject" in text:
         return "per-minute"
     return "unknown"
 
 
 def _retry_delay(error: Exception) -> int:
-    match = re.search(r"(?:retryDelay|retry_delay)[^0-9]*(\d+)", repr(getattr(error, "body", error)))
+    text = f"{getattr(error, 'body', '')!r} {error}"
+    match = re.search(r"(?:retryDelay|retry_delay)[^0-9]*(\d+)", text)
     return int(match.group(1)) if match else 1
 
 

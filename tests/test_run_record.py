@@ -275,6 +275,11 @@ class _GeminiUnknownRateLimitError(_GeminiRateLimitError):
     body = {"error": {}}
 
 
+class _AdkGeminiRateLimitError(RuntimeError):
+    def __str__(self) -> str:
+        return "429 RESOURCE_EXHAUSTED: quotaId GenerateRequestsPerMinutePerProjectPerModel-FreeTier; retryDelay 50s"
+
+
 def _normalize_index_fixture() -> Fixture:
     root = Path(__file__).parents[1] / "src" / "stengents" / "fixtures" / "normalize-index"
     return Fixture("normalize-index", root, ("normalize_index.py",), (sys.executable, "-m", "pytest", "-q"))
@@ -344,6 +349,24 @@ def test_run_fixture_records_an_injected_gemini_limit_as_a_deterministic_failure
     assert record["verification"]["rate_limited"] is True
     assert record["rate_limit"]["classification"] == "per-minute"
     assert record["rate_limit"]["retries"] == 0
+
+
+def test_run_fixture_records_an_adk_gemini_429_as_a_rate_limit_failure(tmp_path: Path) -> None:
+    def agent(_actions) -> None:
+        raise _AdkGeminiRateLimitError()
+
+    record_path, exit_code = run_fixture(
+        _normalize_index_fixture(),
+        run_directory=tmp_path / "runs",
+        model={"provider": "google-ai-studio", "name": "gemini-3.6-flash"},
+        agent_driver=agent,
+        rate_limit_policy=RateLimitPolicy(on_rate_limit="fail"),
+    )
+
+    record = json.loads(record_path.read_text())
+    assert exit_code == 1
+    assert record["verification"]["rate_limited"] is True
+    assert record["rate_limit"]["classification"] == "per-minute"
 
 
 def test_run_fixture_never_retries_an_injected_daily_gemini_limit(tmp_path: Path) -> None:
