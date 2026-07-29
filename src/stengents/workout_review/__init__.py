@@ -192,17 +192,18 @@ contract types.
 #   something the one-shot design could not do reliably.
 #
 #   Latency, measured (#60's actual requirement, not just architected):
-#   repeated runs against the real session on its worst case for the
-#   pre-filter — every one of its 7 exercises has a note, so ``_needs_extraction``
-#   skips none of them and every exercise still costs a real call — land at
-#   43.7-59.6s, down from the undecomposed prototype's 67.5s (same session,
-#   same 8 total calls, before ``_needs_extraction``/``_baseline_finding``
-#   existed). Not yet "closer to 10-25s" on this adversarial case, but the
-#   mechanism's actual saving is session-dependent by design: any exercise
-#   with nothing notable (the corpus's typical case, and presumably most real
-#   sessions) costs zero model time via ``_baseline_finding`` instead of a full
-#   extraction call. A session with fewer notable exercises than this one was
-#   not separately measured here.
+#   measured across three real sessions spanning the pre-filter's range: 0/6
+#   exercises needing a real call (all six get a free ``_baseline_finding``,
+#   just the one synthesis call) -> 9.4s; 4/6 needing a real call -> 27.1s;
+#   7/7 needing a real call, the adversarial case where every exercise has a
+#   note and ``_needs_extraction`` skips none of them -> 43.7-59.6s, down from
+#   the undecomposed prototype's 67.5s on that same worst-case session (same 8
+#   total calls, before ``_needs_extraction``/``_baseline_finding`` existed).
+#   The requirement — "meaningfully closer to today's ~10-25s than to 67.5s" —
+#   holds for a typical/quiet session (back in the original range, sometimes
+#   faster) and the middle case; only a session where every exercise is
+#   genuinely notable still runs long, and that is an inherent, disclosed cost
+#   of decomposition rather than an unmeasured unknown.
 CAPABILITY_VERSION = "0.7.0"
 
 from .contract import (
