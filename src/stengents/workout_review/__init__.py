@@ -56,7 +56,64 @@ contract types.
 #   failure (many exercises, deep real history) is exactly why the original
 #   regression shipped undetected, and remains true after this change; adding
 #   such a case is unstarted follow-up work.
-CAPABILITY_VERSION = "0.5.0"
+# A prompt nudge for within-session load/rep changes (an explicit instruction to
+# compare an exercise's first performed set against its last) was tried and
+# abandoned before 0.6.0 landed: it regressed required_detail_recall 0.660 ->
+# 0.569 (below the 0.60 floor, gate PASS -> FAIL) on a warm qwen2.5:7b-8k A/B —
+# competing with the model's limited 3-observation budget and attention for the
+# things the corpus actually grades (progression, data-quality limitations), not
+# a free addition the way 0.3.0/0.4.0's nudges were. Never committed; the
+# within-session-progression gap it targeted remains open.
+#
+# 0.6.0 — group history evidence into whole-prior-instance slots instead of one
+#   row per set (no ticket filed yet). 0.5.0 capped *how much* history evidence
+#   reaches the prompt but not *how many visible rows* it costs — the same real
+#   data (e.g. 8 prior instances x 3 sets) still cost 24 separate near-identical
+#   JSON lines, which is the exact row-volume mechanism 0.5.0's own diagnosis
+#   pinned as the failure cause. _history_candidate_groups groups each prior
+#   instance's SetEvidence rows into one compact citable slot
+#   (_render_candidate); citing it expands to all of that instance's real,
+#   individually-grounded rows via _resolve_evidence, so contract.py and the
+#   "every cited row resolves verbatim" guarantee are completely untouched —
+#   only the number of chunks the model has to read shrinks, not the underlying
+#   evidence or what gets output. MAX_HISTORY_EVIDENCE keeps the same real-row
+#   budget as 0.5.0; this only changes how it's chunked. Changes the candidate
+#   representation, so a distinct baseline from 0.5.0's.
+#
+#   Warm qwen2.5:7b-8k A/B (corpus 7e40ed6e): both safety floors and
+#   schema_valid_rate hold at 1.0/1.0/0.0, required_limitation_recall is
+#   unchanged at 0.833, required_detail_recall lifts 0.660 -> 0.722 (the
+#   12-case corpus is small enough that grouping rarely changes anything for
+#   it, so this is likely model-sampling variance rather than a real effect of
+#   the change), cases_passing lifts 5 -> 6, and the gate holds PASS.
+#   Live-verified on the same real rich-history session 0.5.0 was tested
+#   against: visible candidate
+#   rows drop 69 -> 53, and the model spontaneously reports a real
+#   within-session load change ("Seated Row 4.0 -> 6.0 plates") as a
+#   'performance' observation — the exact gap an explicit prompt nudge tried
+#   and failed to close moments earlier (see the note above), recovered here as
+#   a side effect of less visual clutter, not a targeted fix.
+#
+#   Two real gaps surfaced landing this, neither fixed here, both pre-existing
+#   in kind even though the second is worse in degree because of this change:
+#   (1) that same "4.0 -> 6.0" claim is itself an unsupported number — the only
+#   evidence it cited was a note ("moved up to 6, feels good there"); "4.0"
+#   appears in no cited row at all (real data: 5/6/6 plates). The deterministic
+#   evaluator's unsupported_claim_rate does not, and by design cannot, catch
+#   this: it only checks that cited rows resolve and that a 'progression' claim
+#   has a prior-Session row, never whether the claim's prose matches what's
+#   cited — CONTEXT.md documents that as deferred to a not-yet-built "later LLM
+#   rubric". This run still scored unsupported_claim_rate 0.0. Not introduced by
+#   0.6.0, but 0.6.0 does nothing to catch it either. (2) grouping means citing
+#   one id can pull in a whole prior instance's rows at once; a review from the
+#   same live session had one observation cite 26 evidence rows, mostly
+#   irrelevant history from unrelated exercises/sessions, once the model cited
+#   several group ids for one claim. Still "grounded" (every row resolves) so
+#   no floor catches it, but a real citation-hygiene regression this change
+#   introduces — nothing here caps evidence-per-observation. Shipped anyway per
+#   product decision: the row-count win is real and measured, and both gaps are
+#   about claim/citation quality, not what this pass was scoped to fix.
+CAPABILITY_VERSION = "0.6.0"
 
 from .contract import (
     Category,

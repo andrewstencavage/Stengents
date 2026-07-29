@@ -163,5 +163,8 @@ def test_every_generator_candidate_grounds_for_each_case(case_id: str) -> None:
     grounding = review_grounding(subject, selected)
 
     assert candidates, f"{case_id}: subject offers no citable evidence"
-    ungrounded = [e for e in candidates if not grounding.resolves(e)]
+    # A history candidate may be a grouped whole-prior-instance slot (a list of
+    # SetEvidence) rather than a single row; check every row it could expand to.
+    flat = [row for candidate in candidates for row in (candidate if isinstance(candidate, list) else [candidate])]
+    ungrounded = [e for e in flat if not grounding.resolves(e)]
     assert not ungrounded, f"{case_id}: generator offered ungroundable candidates: {ungrounded}"

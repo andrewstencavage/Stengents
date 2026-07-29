@@ -228,8 +228,16 @@ def _history_limitations(selected: dict[str, list[dict]]) -> list[Limitation]:
 # --- grounded candidate evidence ----------------------------------------
 
 
-def _candidate_evidence(session: dict, selected: dict[str, list[dict]]) -> list[Evidence]:
-    """Build every citable Evidence row from real subject and history data.
+# A prompt "slot": one Evidence row, or (history only) a whole prior instance's
+# SetEvidence rows grouped and displayed as a single compact, single-id citable
+# unit. Grouping never touches contract.py — a cited group slot still expands to
+# however many real, individually-grounded SetEvidence rows it contains; only
+# the number of *visible* rows the model has to read shrinks.
+Candidate = Evidence | list[SetEvidence]
+
+
+def _candidate_evidence(session: dict, selected: dict[str, list[dict]]) -> list[Candidate]:
+    """Build every citable prompt slot from real subject and history data.
 
     The model never emits raw evidence values — it selects from this list by its
     1-based position, so every cited row is real by construction. Rows that do
@@ -237,36 +245,44 @@ def _candidate_evidence(session: dict, selected: dict[str, list[dict]]) -> list[
     ``loadType``) are silently skipped rather than crashing generation.
     """
     workout_id = session["id"]
-    candidates: list[Evidence] = []
+    candidates: list[Candidate] = []
 
     # Subject session-level facts.
     candidates.extend(_session_facts(workout_id, session))
 
-    # Subject sets and activity-level facts.
+    # Subject sets and activity-level facts. Kept ungrouped (one row per set, as
+    # before) — subject evidence is typically small and the data-quality checks
+    # (0.3.0/0.4.0) need to point at one specific subject set, not a group.
     for activity in session.get("activities") or []:
         name = activity.get("name")
         candidates.extend(_set_rows(workout_id, name, activity))
         candidates.extend(_activity_facts(workout_id, name, activity))
 
-    # History sets — what progression claims compare against.
-    candidates.extend(_history_candidate_rows(selected))
+    # History sets — what progression claims compare against. Grouped whole prior
+    # instance at a time: the same information a flat set of rows would carry, in
+    # far fewer visible rows (#see MAX_HISTORY_EVIDENCE / 0.5.0's cap).
+    candidates.extend(_history_candidate_groups(selected))
 
     return candidates
 
 
-def _history_candidate_rows(selected: dict[str, list[dict]]) -> list[Evidence]:
-    """Prior-Session set rows, round-robined per exercise and capped in total.
+def _history_candidate_groups(selected: dict[str, list[dict]]) -> list[list[SetEvidence]]:
+    """Prior-Session set rows, grouped whole-instance-per-slot, round-robined per
+    exercise, and capped in total underlying rows (not slot count).
 
     Builds each exercise's priors (already newest-first, capped at HISTORY_CAP)
     into whole per-instance row groups, then takes one whole prior instance at a
     time from each exercise in turn — never splitting a prior's own sets across
-    the cutoff — until MAX_HISTORY_EVIDENCE is reached. Round-robining instead of
-    exhausting one exercise before the next keeps every exercise represented
-    even when the total is capped; a session under budget is unaffected.
+    the cutoff — until MAX_HISTORY_EVIDENCE real SetEvidence rows are reached.
+    Round-robining instead of exhausting one exercise before the next keeps every
+    exercise represented even when the total is capped; a session under budget is
+    unaffected. Each returned group becomes exactly one CANDIDATE EVIDENCE line
+    in the prompt regardless of how many sets it holds — the total real evidence
+    budget is unchanged from the flat form, only how many chunks it costs to show.
     """
-    queues: dict[str, list[list[Evidence]]] = {}
+    queues: dict[str, list[list[SetEvidence]]] = {}
     for name, priors in selected.items():
-        instances: list[list[Evidence]] = []
+        instances: list[list[SetEvidence]] = []
         for prior in priors:
             prior_id = prior["session"].get("id")
             if prior_id is None:
@@ -277,26 +293,28 @@ def _history_candidate_rows(selected: dict[str, list[dict]]) -> list[Evidence]:
         if instances:
             queues[name] = instances
 
-    rows: list[Evidence] = []
+    groups: list[list[SetEvidence]] = []
+    total_rows = 0
     pointers = {name: 0 for name in queues}
     active = list(queues.keys())
-    while active and len(rows) < MAX_HISTORY_EVIDENCE:
+    while active and total_rows < MAX_HISTORY_EVIDENCE:
         for name in list(active):
             position = pointers[name]
             if position >= len(queues[name]):
                 active.remove(name)
                 continue
             instance = queues[name][position]
-            if rows and len(rows) + len(instance) > MAX_HISTORY_EVIDENCE:
+            if groups and total_rows + len(instance) > MAX_HISTORY_EVIDENCE:
                 active.remove(name)
                 continue
-            rows.extend(instance)
+            groups.append(instance)
+            total_rows += len(instance)
             pointers[name] = position + 1
-    return rows
+    return groups
 
 
-def _set_rows(workout_id: str, exercise: str | None, activity: dict) -> list[Evidence]:
-    rows: list[Evidence] = []
+def _set_rows(workout_id: str, exercise: str | None, activity: dict) -> list[SetEvidence]:
+    rows: list[SetEvidence] = []
     for row in performed_sets(activity):
         try:
             rows.append(SetEvidence(workout_id=workout_id, exercise=exercise, **row))
@@ -425,10 +443,25 @@ _INSTRUCTIONS = (
 )
 
 
+def _render_candidate(candidate: Candidate) -> str:
+    """Render one CANDIDATE EVIDENCE line: a single row, or a whole grouped instance."""
+    if isinstance(candidate, list):
+        first = candidate[0]
+        return json.dumps(
+            {
+                "kind": "history_sets",
+                "workout_id": first.workout_id,
+                "exercise": first.exercise,
+                "sets": [{"reps": row.reps, "load": row.load, "loadType": row.loadType} for row in candidate],
+            }
+        )
+    return json.dumps(candidate.model_dump())
+
+
 def _build_prompt(
     session: dict,
     selected: dict[str, list[dict]],
-    candidates: list[Evidence],
+    candidates: list[Candidate],
     malformed: dict[str, int] | None = None,
 ) -> str:
     lines: list[str] = [_INSTRUCTIONS, ""]
@@ -474,8 +507,8 @@ def _build_prompt(
         )
         lines.append("")
     lines.append("CANDIDATE EVIDENCE (id: row):")
-    for index, evidence in enumerate(candidates, start=1):
-        lines.append(f"{index}: {json.dumps(evidence.model_dump())}")
+    for index, candidate in enumerate(candidates, start=1):
+        lines.append(f"{index}: {_render_candidate(candidate)}")
     lines.append("")
     lines.append("Return only the JSON object.")
     return "\n".join(lines)
@@ -504,7 +537,7 @@ def _extract_json(raw: str) -> dict | None:
 
 def _decode_observations(
     raw_observations: object,
-    candidates: list[Evidence],
+    candidates: list[Candidate],
     selected: dict[str, list[dict]],
     grounding: Grounding,
 ) -> list[Observation]:
@@ -562,7 +595,7 @@ def _decode_observations(
 
 
 def _resolve_evidence(
-    raw_ids: object, candidates: list[Evidence], grounding: Grounding
+    raw_ids: object, candidates: list[Candidate], grounding: Grounding
 ) -> list[Evidence]:
     if not isinstance(raw_ids, list):
         return []
@@ -574,10 +607,11 @@ def _resolve_evidence(
         index = raw_id - 1  # ids are 1-based in the prompt.
         if 0 <= index < len(candidates) and index not in seen:
             candidate = candidates[index]
-            if not grounding.resolves(candidate):
-                continue  # guard: never surface a row that doesn't ground verbatim.
+            rows = candidate if isinstance(candidate, list) else [candidate]
+            if not all(grounding.resolves(row) for row in rows):
+                continue  # guard: never surface a group with any row that doesn't ground verbatim.
             seen.add(index)
-            resolved.append(candidate)
+            resolved.extend(rows)
     return resolved
 
 

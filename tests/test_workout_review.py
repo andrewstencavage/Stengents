@@ -16,7 +16,7 @@ from stengents.workout_review.review import (
     MAX_HISTORY_EVIDENCE,
     _build_prompt,
     _candidate_evidence,
-    _history_candidate_rows,
+    _history_candidate_groups,
     _malformed_set_notes,
     _resolve_evidence,
     select_comparison_history,
@@ -57,6 +57,15 @@ def _fake_complete(payload: dict):
         return json.dumps(payload)
 
     return complete
+
+
+def _flatten_candidates(candidates):
+    """A grouped history candidate is a list of SetEvidence; flatten to individual rows,
+    matching what citing that group's single id expands to."""
+    flat = []
+    for candidate in candidates:
+        flat.extend(candidate if isinstance(candidate, list) else [candidate])
+    return flat
 
 
 # --- contract invariants (unchanged) ------------------------------------
@@ -153,7 +162,7 @@ def test_history_excludes_priors_without_performed_sets() -> None:
     assert history["Cable Squat"] == []
 
 
-def test_history_candidate_rows_caps_the_total_across_all_exercises() -> None:
+def test_history_candidate_groups_caps_total_rows_across_all_exercises() -> None:
     exercises = ["Cable Squat", "Bench Press", "Row", "Overhead Press"]
     subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity(name, [(10, 3.0)]) for name in exercises])
     pool = [subject] + [
@@ -163,14 +172,14 @@ def test_history_candidate_rows_caps_the_total_across_all_exercises() -> None:
     ]
 
     selected = select_comparison_history(subject, pool)
-    rows = _history_candidate_rows(selected)
+    groups = _history_candidate_groups(selected)
 
-    assert len(rows) <= MAX_HISTORY_EVIDENCE
+    assert sum(len(group) for group in groups) <= MAX_HISTORY_EVIDENCE
     # Round-robin, not first-exercise-hogs-the-budget: every exercise is represented.
-    assert {row.exercise for row in rows} == set(exercises)
+    assert {group[0].exercise for group in groups} == set(exercises)
 
 
-def test_history_candidate_rows_never_splits_a_prior_instance() -> None:
+def test_history_candidate_groups_keep_a_prior_instances_sets_together() -> None:
     subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
     pool = [subject] + [
         _session(f"p{i}", f"2026-07-{10 + i:02d}T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0), (8, 3.0), (8, 3.0)])])
@@ -178,23 +187,22 @@ def test_history_candidate_rows_never_splits_a_prior_instance() -> None:
     ]
 
     selected = select_comparison_history(subject, pool)
-    rows = _history_candidate_rows(selected)
+    groups = _history_candidate_groups(selected)
 
-    counts: dict[str, int] = {}
-    for row in rows:
-        counts[row.workout_id] = counts.get(row.workout_id, 0) + 1
-    assert all(count == 3 for count in counts.values())  # every included prior keeps all 3 of its sets
+    # Every group is one prior's full 3 sets, all sharing that prior's workout_id — never split.
+    assert all(len(group) == 3 for group in groups)
+    assert all(len({row.workout_id for row in group}) == 1 for group in groups)
 
 
-def test_history_candidate_rows_is_unaffected_below_the_cap() -> None:
+def test_history_candidate_groups_is_unaffected_below_the_cap() -> None:
     subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
     prior = _session("prior", "2026-07-21T10:00:00.000Z", [_activity("Cable Squat", [(8, 3.0)])])
 
     selected = select_comparison_history(subject, [subject, prior])
-    rows = _history_candidate_rows(selected)
+    groups = _history_candidate_groups(selected)
 
-    assert len(rows) == 1
-    assert rows[0].workout_id == "prior"
+    assert len(groups) == 1
+    assert groups[0][0].workout_id == "prior"
 
 
 # --- generation ---------------------------------------------------------
@@ -223,7 +231,7 @@ def test_every_emitted_evidence_row_resolves_to_the_input_data() -> None:
 
     selected = select_comparison_history(subject, pool)
     candidates = _candidate_evidence(subject, selected)
-    valid = {evidence.model_dump_json() for evidence in candidates}
+    valid = {evidence.model_dump_json() for evidence in _flatten_candidates(candidates)}
 
     # The model cites the first two candidate ids (1-based).
     review = review_workout(
@@ -342,7 +350,9 @@ def test_a_progression_claim_is_kept_when_history_exists() -> None:
         i for i, e in enumerate(candidates, start=1) if isinstance(e, SetEvidence) and e.workout_id == "subj"
     )
     prior_set = next(
-        i for i, e in enumerate(candidates, start=1) if isinstance(e, SetEvidence) and e.workout_id == "prior"
+        i
+        for i, e in enumerate(candidates, start=1)
+        if isinstance(e, list) and any(row.workout_id == "prior" for row in e)
     )
 
     review = review_workout(
@@ -394,11 +404,12 @@ def test_candidate_evidence_is_grounded_in_subject_and_history() -> None:
     subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)], note="strong")])
     prior = _session("prior", "2026-07-20T10:00:00.000Z", [_activity("Cable Squat", [(8, 3.0)])])
     candidates = _candidate_evidence(subject, select_comparison_history(subject, [subject, prior]))
+    flat = _flatten_candidates(candidates)
 
-    set_ids = {e.workout_id for e in candidates if isinstance(e, SetEvidence)}
+    set_ids = {e.workout_id for e in flat if isinstance(e, SetEvidence)}
     assert set_ids == {"subj", "prior"}  # both subject and history sets are citable
-    assert any(isinstance(e, FactEvidence) and e.field == "note" and e.value == "strong" for e in candidates)
-    assert any(isinstance(e, FactEvidence) and e.exercise is None and e.field == "feel" for e in candidates)
+    assert any(isinstance(e, FactEvidence) and e.field == "note" and e.value == "strong" for e in flat)
+    assert any(isinstance(e, FactEvidence) and e.exercise is None and e.field == "feel" for e in flat)
 
 
 def test_structured_activity_offers_no_derived_sets_completed_candidate() -> None:
