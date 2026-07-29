@@ -14,11 +14,14 @@ from stengents.workout_review import (
 from stengents.workout_review.grounding import Grounding
 from stengents.workout_review.review import (
     MAX_HISTORY_EVIDENCE,
-    _build_prompt,
+    Partition,
     _candidate_evidence,
     _history_candidate_groups,
     _malformed_set_notes,
+    _needs_extraction,
     _resolve_evidence,
+    build_extraction_prompt,
+    partition_session,
     select_comparison_history,
 )
 
@@ -51,10 +54,33 @@ def _session(session_id: str, date: str, activities: list[dict], **extra) -> dic
 
 
 def _fake_complete(payload: dict):
-    """A model seam that ignores the prompt and returns a canned structured reply."""
+    """A model seam that ignores the prompt and returns a canned structured reply.
+
+    Used for single-call tests (extract() or synthesize() in isolation, or a
+    handler that must fail/degrade regardless of which call reaches it)."""
 
     def complete(_model, _prompt):
         return json.dumps(payload)
+
+    return complete
+
+
+def _route_complete(extraction: dict, synthesis: dict):
+    """A model seam for the full decomposed pipeline (review_workout end to end).
+
+    ``extraction`` maps a partition key -> that partition's canned findings
+    payload (a partition not listed gets no findings). ``synthesis`` is the one
+    canned reply for the single synthesis call. Routed by prompt shape: an
+    extraction prompt always carries a ``PARTITION: <key>`` line; anything else
+    is the synthesis call.
+    """
+
+    def complete(_model, prompt):
+        for line in prompt.splitlines():
+            if line.startswith("PARTITION: "):
+                key = line[len("PARTITION: ") :]
+                return json.dumps(extraction.get(key, {"observations": [], "limitations": []}))
+        return json.dumps(synthesis)
 
     return complete
 
@@ -216,7 +242,7 @@ def test_no_priors_yields_an_insufficient_history_limitation() -> None:
         fetch=lambda _id: subject,
         fetch_history=lambda: [subject],  # itself only; no strictly-earlier priors
         model=object(),
-        complete=_fake_complete({"summary": "s", "observations": [], "limitations": []}),
+        complete=_route_complete({}, {"summary": "s", "selected_observation_indexes": []}),
     )
 
     kinds = [limitation.kind for limitation in review.limitations]
@@ -233,26 +259,29 @@ def test_every_emitted_evidence_row_resolves_to_the_input_data() -> None:
     candidates = _candidate_evidence(subject, selected)
     valid = {evidence.model_dump_json() for evidence in _flatten_candidates(candidates)}
 
-    # The model cites the first two candidate ids (1-based).
+    # The model cites the first two candidate ids (1-based) — session-level facts,
+    # still real and groundable regardless of which partition's response cites them.
     review = review_workout(
         "subj",
         fetch=lambda _id: subject,
         fetch_history=lambda: pool,
         model=object(),
-        complete=_fake_complete(
+        complete=_route_complete(
             {
-                "summary": "Cable Squat performed.",
-                "observations": [
-                    {
-                        "kind": "fact",
-                        "confidence": "firm",
-                        "category": "performance",
-                        "claim": "Two working sets logged.",
-                        "evidence_ids": [1, 2],
-                    }
-                ],
-                "limitations": [],
-            }
+                "Cable Squat": {
+                    "observations": [
+                        {
+                            "kind": "fact",
+                            "confidence": "firm",
+                            "category": "performance",
+                            "claim": "Two working sets logged.",
+                            "evidence_ids": [1, 2],
+                        }
+                    ],
+                    "limitations": [],
+                }
+            },
+            {"summary": "s", "selected_observation_indexes": [1]},
         ),
     )
 
@@ -264,27 +293,31 @@ def test_every_emitted_evidence_row_resolves_to_the_input_data() -> None:
 
 
 def test_invented_or_unknown_evidence_ids_are_dropped() -> None:
-    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
+    # note="ok" forces _needs_extraction True, so Cable Squat gets no automatic
+    # baseline finding — keeps this test's index arithmetic to just its own finding.
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)], note="ok")])
 
     review = review_workout(
         "subj",
         fetch=lambda _id: subject,
         fetch_history=lambda: [subject],
         model=object(),
-        complete=_fake_complete(
+        complete=_route_complete(
             {
-                "summary": "s",
-                "observations": [
-                    {
-                        "kind": "fact",
-                        "confidence": "firm",
-                        "category": "performance",
-                        "claim": "cites a nonexistent row",
-                        "evidence_ids": [9999],  # out of range -> observation dropped
-                    }
-                ],
-                "limitations": [],
-            }
+                "Cable Squat": {
+                    "observations": [
+                        {
+                            "kind": "fact",
+                            "confidence": "firm",
+                            "category": "performance",
+                            "claim": "cites a nonexistent row",
+                            "evidence_ids": [9999],  # out of range -> finding dropped
+                        }
+                    ],
+                    "limitations": [],
+                }
+            },
+            {"summary": "s", "selected_observation_indexes": [1]},
         ),
     )
 
@@ -292,7 +325,9 @@ def test_invented_or_unknown_evidence_ids_are_dropped() -> None:
 
 
 def test_generation_caps_observations_at_three() -> None:
-    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
+    # note="ok" forces _needs_extraction True, so Cable Squat gets a real partition
+    # (and no automatic baseline finding) — the 5 injected observations are its only source.
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)], note="ok")])
     one = {
         "kind": "fact",
         "confidence": "firm",
@@ -306,34 +341,41 @@ def test_generation_caps_observations_at_three() -> None:
         fetch=lambda _id: subject,
         fetch_history=lambda: [subject],
         model=object(),
-        complete=_fake_complete({"summary": "s", "observations": [one] * 5, "limitations": []}),
+        complete=_route_complete(
+            {"Cable Squat": {"observations": [one] * 5, "limitations": []}},
+            {"summary": "s", "selected_observation_indexes": [1, 2, 3, 4, 5]},
+        ),
     )
 
     assert len(review.observations) <= 3
 
 
 def test_progression_claim_without_history_is_dropped() -> None:
-    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
+    # note="ok" forces _needs_extraction True, so Cable Squat gets no automatic
+    # baseline finding — keeps this test's index arithmetic to just its own finding.
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)], note="ok")])
 
     review = review_workout(
         "subj",
         fetch=lambda _id: subject,
         fetch_history=lambda: [subject],  # no priors -> zero history for Cable Squat
         model=object(),
-        complete=_fake_complete(
+        complete=_route_complete(
             {
-                "summary": "s",
-                "observations": [
-                    {
-                        "kind": "inference",
-                        "confidence": "tentative",
-                        "category": "progression",
-                        "claim": "load increased vs last time",
-                        "evidence_ids": [1],
-                    }
-                ],
-                "limitations": [],
-            }
+                "Cable Squat": {
+                    "observations": [
+                        {
+                            "kind": "inference",
+                            "confidence": "tentative",
+                            "category": "progression",
+                            "claim": "load increased vs last time",
+                            "evidence_ids": [1],  # a session fact, not a prior set either way
+                        }
+                    ],
+                    "limitations": [],
+                }
+            },
+            {"summary": "s", "selected_observation_indexes": [1]},
         ),
     )
 
@@ -360,20 +402,22 @@ def test_a_progression_claim_is_kept_when_history_exists() -> None:
         fetch=lambda _id: subject,
         fetch_history=lambda: pool,
         model=object(),
-        complete=_fake_complete(
+        complete=_route_complete(
             {
-                "summary": "s",
-                "observations": [
-                    {
-                        "kind": "inference",
-                        "confidence": "firm",
-                        "category": "progression",
-                        "claim": "load went up from 3 to 3.5 plate",
-                        "evidence_ids": [subject_set, prior_set],
-                    }
-                ],
-                "limitations": [],
-            }
+                "Cable Squat": {
+                    "observations": [
+                        {
+                            "kind": "inference",
+                            "confidence": "firm",
+                            "category": "progression",
+                            "claim": "load went up from 3 to 3.5 plate",
+                            "evidence_ids": [subject_set, prior_set],
+                        }
+                    ],
+                    "limitations": [],
+                }
+            },
+            {"summary": "s", "selected_observation_indexes": [1]},
         ),
     )
 
@@ -458,25 +502,113 @@ def test_clean_session_has_no_malformed_notes() -> None:
     assert _malformed_set_notes(subject) == {}
 
 
-def test_build_prompt_surfaces_data_quality_notes() -> None:
-    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
+# --- extraction pre-filter (#60) -----------------------------------------
+
+
+def test_needs_extraction_false_for_a_boring_exercise() -> None:
+    # No note, constant within the session, no priors, not malformed, not skipped.
+    activity = _activity("Cable Squat", [(10, 3.0), (10, 3.0), (10, 3.0)])
+    assert _needs_extraction("Cable Squat", activity, priors=[], malformed={}) is False
+
+
+def test_needs_extraction_true_when_activity_has_a_note() -> None:
+    activity = _activity("Cable Squat", [(10, 3.0), (10, 3.0)], note="felt strong")
+    assert _needs_extraction("Cable Squat", activity, priors=[], malformed={}) is True
+
+
+def test_needs_extraction_true_when_the_exercise_is_malformed() -> None:
+    activity = _activity("Cable Squat", [(10, 3.0), (10, 3.0)])
+    assert _needs_extraction("Cable Squat", activity, priors=[], malformed={"Cable Squat": 1}) is True
+
+
+def test_needs_extraction_true_when_skipped() -> None:
+    activity = _activity("Cable Squat", [(10, 3.0)], skipped=True)
+    assert _needs_extraction("Cable Squat", activity, priors=[], malformed={}) is True
+
+
+def test_needs_extraction_true_when_load_changes_within_the_session() -> None:
+    activity = _activity("Seated Row", [(10, 5.0), (10, 6.0), (10, 6.0)])
+    assert _needs_extraction("Seated Row", activity, priors=[], malformed={}) is True
+
+
+def test_needs_extraction_true_when_reps_change_within_the_session() -> None:
+    activity = _activity("Ab Crunch", [(12, 4.0), (12, 4.0), (11, 4.0)])
+    assert _needs_extraction("Ab Crunch", activity, priors=[], malformed={}) is True
+
+
+def test_needs_extraction_true_when_it_differs_from_the_latest_prior() -> None:
+    activity = _activity("Cable Squat", [(10, 3.0), (10, 3.0)])
+    prior = {"activity": _activity("Cable Squat", [(10, 3.0), (10, 3.5)])}  # prior's last set differs
+    assert _needs_extraction("Cable Squat", activity, priors=[prior], malformed={}) is True
+
+
+def test_needs_extraction_false_when_it_matches_the_latest_prior() -> None:
+    activity = _activity("Cable Squat", [(10, 3.0), (10, 3.0)])
+    prior = {"activity": _activity("Cable Squat", [(10, 3.0), (10, 3.0)])}
+    assert _needs_extraction("Cable Squat", activity, priors=[prior], malformed={}) is False
+
+
+def test_extraction_prompt_surfaces_data_quality_notes() -> None:
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Chest Fly", [(10, 3.0)], note="ok")])
+    selected = select_comparison_history(subject, [subject])
+    candidates = _candidate_evidence(subject, selected)
+    partition = Partition(key="Chest Fly", candidate_ids=tuple(range(1, len(candidates) + 1)))
+
+    header = "DATA QUALITY NOTE:"
+    without = build_extraction_prompt(partition, candidates, selected, {}, set())
+    assert header not in without
+
+    with_notes = build_extraction_prompt(partition, candidates, selected, {"Chest Fly": 2}, set())
+    assert header in with_notes
+    assert "2 performed sets" in with_notes
+    inline = "You MUST add a 'malformed_data'"
+    assert inline in with_notes
+    assert inline not in without
+
+
+def test_extraction_prompt_surfaces_a_skipped_note() -> None:
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Chest Fly", [(10, 3.0)], skipped=True)])
+    selected = select_comparison_history(subject, [subject])
+    candidates = _candidate_evidence(subject, selected)
+    partition = Partition(key="Chest Fly", candidate_ids=tuple(range(1, len(candidates) + 1)))
+
+    without = build_extraction_prompt(partition, candidates, selected, {}, set())
+    assert "was marked skipped" not in without
+
+    with_note = build_extraction_prompt(partition, candidates, selected, {}, {"Chest Fly"})
+    assert "'Chest Fly' was marked skipped" in with_note
+    assert "You MUST add a 'missing_data' limitation naming 'Chest Fly'" in with_note
+
+
+def test_partition_session_gives_a_boring_exercise_a_baseline_finding_not_a_partition() -> None:
+    # Constant within the session, no note, no priors, not malformed: nothing that
+    # needs a model call, but its basic performance facts must still be covered.
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0), (10, 3.0)])])
     selected = select_comparison_history(subject, [subject])
     candidates = _candidate_evidence(subject, selected)
 
-    header = "DATA QUALITY NOTES (sets that could not be parsed"
-    without = _build_prompt(subject, selected, candidates, {})
-    assert header not in without
+    partitions, baselines = partition_session(subject, selected, candidates, {})
 
-    with_notes = _build_prompt(subject, selected, candidates, {"Chest Fly": 2})
-    assert header in with_notes
-    assert "Chest Fly" in with_notes
-    assert "2 performed sets" in with_notes
-    # The nudge to emit malformed_data is inline in the section, so it only appears
-    # for a session that actually has dropped sets — a clean session's prompt stays
-    # byte-identical to the pre-change (0.3.0) prompt.
-    inline = "you MUST add a 'malformed_data' limitation"
-    assert inline in with_notes
-    assert inline not in without
+    assert partitions == []  # Cable Squat gets no partition at all, and there's no session partition
+    assert len(baselines) == 1
+    baseline = baselines[0]
+    assert baseline.partition_key == "Cable Squat"
+    assert baseline.finding_kind == "observation" and baseline.category == "performance"
+    assert baseline.evidence_ids  # cites its own real sets, no model call needed
+
+
+def test_partition_session_keeps_an_exercise_that_needs_extraction() -> None:
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Seated Row", [(10, 5.0), (10, 6.0)])])
+    selected = select_comparison_history(subject, [subject])
+    candidates = _candidate_evidence(subject, selected)
+
+    partitions, baselines = partition_session(subject, selected, candidates, {})
+
+    keys = [p.key for p in partitions]
+    assert "Seated Row" in keys
+    seated_row = next(p for p in partitions if p.key == "Seated Row")
+    assert seated_row.candidate_ids  # has real candidate ids to cite
+    assert baselines == []  # gets a real partition, not a baseline finding
 
 
 def test_freeform_activity_still_offers_its_literal_sets_completed() -> None:

@@ -113,7 +113,97 @@ contract types.
 #   introduces — nothing here caps evidence-per-observation. Shipped anyway per
 #   product decision: the row-count win is real and measured, and both gaps are
 #   about claim/citation quality, not what this pass was scoped to fix.
-CAPABILITY_VERSION = "0.6.0"
+#
+# 0.7.0 — decompose generation into per-exercise extraction + one synthesis
+#   call (Wayfinder map #56, decision #59, implementation #60). Two independent
+#   one-shot fixes for coverage (a written nudge, then a deterministic hint,
+#   both tried against this same failure) each regressed the corpus by
+#   displacing something the model used to get right elsewhere in the same
+#   completion — evidence the one-shot completion itself, not the wording, was
+#   the constraint. ``partition_session``/``extract``/``synthesize`` replace
+#   the single ``_build_prompt``/one call/``_decode_observations`` path:
+#   ``extract`` runs once per exercise partition (full attention, no
+#   competition from other exercises) via ``_needs_extraction``, which skips a
+#   call entirely for an exercise with nothing to report (no note, not skipped,
+#   not malformed, unchanged within the session and vs. its most recent prior)
+#   — the latency lever, since the local endpoint is compute-bound (measured:
+#   8 concurrent calls barely beat 8 sequential ones), so fewer tokens
+#   processed is the only thing that meaningfully helps. ``synthesize`` then
+#   selects the best <=3 findings and writes the summary. Grounding is
+#   completely unchanged: extraction and synthesis both cite into the same
+#   shared, numbered candidate pool ``_candidate_evidence`` already built, so
+#   every citation still resolves through the same, unmodified
+#   ``_resolve_evidence``/``Grounding`` — no new grounding code, verified live
+#   and by the unchanged evidence-validity floor. Changes the candidate
+#   representation and the generation shape, so a distinct baseline from
+#   0.6.0's.
+#
+#   Two real bugs found and fixed while landing this, both via the corpus A/B:
+#   (1) an exercise ``_needs_extraction`` skipped got no finding at all in the
+#   first cut — dropped from 0.4375 detail recall (vs 0.6.0's 0.722) because
+#   "nothing notable happened" isn't "nothing worth reporting"; even a boring
+#   exercise's basic performance facts are exactly what the corpus's required
+#   evidence checks for, and the one-shot design always had them. Fixed by
+#   ``_baseline_finding``: a skipped exercise gets a deterministic "performance"
+#   finding (no model call) citing its own real sets, instead of silence. (2) a
+#   live extraction call for a real malformed-data corpus case put its
+#   limitation in a stray top-level ``"limitation"`` key instead of inside the
+#   schema's array, and the parser silently dropped it — traced by calling the
+#   model directly on the exact failing prompt, not guessed. Root cause: a
+#   unified ``{"findings": [...]}`` schema was a novel shape for the model
+#   relative to the proven, separate ``observations``/``limitations`` arrays
+#   every version through 0.6.0 used. Reverted extraction to that exact proven
+#   two-array shape rather than patch the parser to tolerate the stray key.
+#
+#   After both fixes, the corpus still failed the gate: required_detail_recall
+#   0.583 (floor 0.60), cases_passing 3/12 vs 0.6.0's 6/12, safety floors and
+#   schema_valid_rate still holding at 1.0/1.0/0.0. This wasn't chased with
+#   more prompt tuning — the corpus's 12 cases are mostly 1-2 exercises, and
+#   splitting a simple case into independent extraction+synthesis calls gives
+#   the model more independent rolls of the dice to be vague on citations than
+#   one focused one-shot call would (observed directly: c03 flipped between a
+#   full pass and a partial miss across otherwise-identical re-runs) — exactly
+#   the corpus inadequacy the Wayfinder decision (#59) anticipated going in.
+#
+#   A third real issue surfaced live instead, on the actual session motivating
+#   this whole map: repeated runs consistently produced 4 limitations, every
+#   time, shuffling between 'conflicting_data' and 'missing_data' on different
+#   exercises with nothing actually wrong — not a wording problem in one
+#   category, but the per-exercise extraction call treating "inspect for a
+#   data-quality problem" as an invitation to always find one. A prompt-only
+#   reword of the conflicting_data trigger (tried first) did not fix this — 3
+#   live re-runs still produced 4 findings each time, just reshuffled. Fixed by
+#   removing the model's discretion entirely: 'conflicting_data' (the one check
+#   needing subjective note-vs-numbers judgment) is no longer solicited at all,
+#   and 'missing_data' (skipped) is now a deterministic DATA QUALITY NOTE
+#   (``_skipped_exercises``) injected only when ``activity.get("skipped")`` is
+#   actually true — the same pattern 0.4.0 already used for malformed sets.
+#   Live-verified: 0 limitations across repeated runs on a session with zero
+#   real data-quality issues, down from 4 every time.
+#
+#   That fix also happened to clear the corpus gate: required_detail_recall
+#   0.75 (floor 0.60), cases_passing 4/12, required_limitation_recall 0.5
+#   (floor 0.33, down from 0.6.0's 0.833 — an accepted, deliberate cost: c06
+#   specifically requires a conflicting_data catch this version no longer
+#   attempts), gate PASS. The actual target failure mode (many exercises, real
+#   accumulated history) is live-verified separately: every partition found its
+#   own real signal (all 3 within-session bumps, real cross-session
+#   progression), with clean 3-4 row citations and zero fabrication —
+#   something the one-shot design could not do reliably.
+#
+#   Latency, measured (#60's actual requirement, not just architected):
+#   repeated runs against the real session on its worst case for the
+#   pre-filter — every one of its 7 exercises has a note, so ``_needs_extraction``
+#   skips none of them and every exercise still costs a real call — land at
+#   43.7-59.6s, down from the undecomposed prototype's 67.5s (same session,
+#   same 8 total calls, before ``_needs_extraction``/``_baseline_finding``
+#   existed). Not yet "closer to 10-25s" on this adversarial case, but the
+#   mechanism's actual saving is session-dependent by design: any exercise
+#   with nothing notable (the corpus's typical case, and presumably most real
+#   sessions) costs zero model time via ``_baseline_finding`` instead of a full
+#   extraction call. A session with fewer notable exercises than this one was
+#   not separately measured here.
+CAPABILITY_VERSION = "0.7.0"
 
 from .contract import (
     Category,
