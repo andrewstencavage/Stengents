@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -17,13 +18,18 @@ def _fixture(identifier: str) -> Fixture:
     return Fixture(identifier, Path(__file__).parent / "fixtures" / identifier, ("normalize_index.py",), (sys.executable, "-m", "pytest", "-q"))
 
 
-_USAGE = "usage: stengents run <fixture-id> [--model <name>]\n       stengents review-benchmark [--model <name>] [--write-baseline]"
+_USAGE = (
+    "usage: stengents run <fixture-id> [--model <name>]\n"
+    "       stengents review-benchmark [--model <name>] [--write-baseline]\n"
+    "       stengents serve-coach [--model <name>] [--port <n>]"
+)
 
 
-def _parse(arguments: list[str]) -> tuple[list[str], str | None, bool]:
+def _parse(arguments: list[str]) -> tuple[list[str], str | None, bool, int | None]:
     positional: list[str] = []
     model_override: str | None = None
     write_baseline = False
+    port_override: int | None = None
     index = 0
     while index < len(arguments):
         token = arguments[index]
@@ -36,10 +42,17 @@ def _parse(arguments: list[str]) -> tuple[list[str], str | None, bool]:
             model_override = token[len("--model=") :]
         elif token == "--write-baseline":
             write_baseline = True
+        elif token == "--port":
+            index += 1
+            if index >= len(arguments):
+                raise ValueError("--port requires a value")
+            port_override = int(arguments[index])
+        elif token.startswith("--port="):
+            port_override = int(token[len("--port=") :])
         else:
             positional.append(token)
         index += 1
-    return positional, model_override, write_baseline
+    return positional, model_override, write_baseline, port_override
 
 
 def _run_command(fixture_id: str, model_override: str | None) -> int:
@@ -100,10 +113,46 @@ def _review_benchmark_command(model_override: str | None, write_baseline_flag: b
     return 0
 
 
+def _serve_coach_command(model_override: str | None, port_override: int | None) -> int:
+    # Deferred imports: this path pulls in pydantic/litellm, which `run` doesn't need.
+    from .workout_review.review import DEFAULT_MODEL_NAME, review_workout
+    from .workout_review.server import serve
+
+    connection = resolve_model(DEFAULT_MODEL_NAME, name=model_override)
+    if not connection.name:
+        print("preflight failed: configured_model_missing; detail=a model is required via --model or STENGENTS_MODEL_NAME", file=sys.stderr)
+        return 2
+    try:
+        connection.preflight()
+    except ModelSourceUnavailable as error:
+        print(f"preflight failed: {error}; endpoint={connection.base_url}; model={connection.name}", file=sys.stderr)
+        return 2
+
+    def review(workout_id: str):
+        return review_workout(workout_id, model=connection)
+
+    # Defaults to every interface, not just loopback: Kiln reaches this from a
+    # separate host (or a separate Docker network namespace), the same LAN-trust
+    # boundary Kiln's own KILN_HOST=0.0.0.0 default already assumes. Override
+    # with STENGENTS_COACH_HOST for a loopback-only run.
+    host = os.environ.get("STENGENTS_COACH_HOST", "0.0.0.0")
+    server = serve(host=host, port=port_override or 8787, review_workout=review)
+    host, port = server.server_address
+    print(json.dumps({"host": host, "port": port, "model": connection.as_record()}))
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.shutdown()
+        server.server_close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
     try:
-        positional, model_override, write_baseline_flag = _parse(arguments)
+        positional, model_override, write_baseline_flag, port_override = _parse(arguments)
     except ValueError:
         print(_USAGE, file=sys.stderr)
         return 2
@@ -115,5 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         return _run_command(positional[1], model_override)
     if command == "review-benchmark" and len(positional) == 1:
         return _review_benchmark_command(model_override, write_baseline_flag)
+    if command == "serve-coach" and len(positional) == 1:
+        return _serve_coach_command(model_override, port_override)
     print(_USAGE, file=sys.stderr)
     return 2

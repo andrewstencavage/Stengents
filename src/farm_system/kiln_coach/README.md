@@ -69,6 +69,35 @@ default model name).
   falling back to the local `gym` defaults. The model still runs loopback-only on
   `gym`, so its tunnel to `11434` must be up.
 
+## Coach review server (`stengents serve-coach`)
+
+Kiln's Train console calls out to a Workout Review right after a Session
+finishes (see `local/server.js`'s `/api/coach/review/:id` proxy in the `kiln`
+repo). That HTTP surface is served here, not by the ADK chat agent:
+
+```bash
+stengents serve-coach --model qwen2.5:7b-8k --port 8787
+```
+
+Run this **on the `gym` box itself**, not the laptop — Ollama already runs
+there loopback-only, so a same-host `serve-coach` reaches it at
+`127.0.0.1:11434` directly, with no SSH tunnel required. Kiln's Docker
+container (built from `andrewstencavage/kiln`) reaches it via
+`KILN_COACH_URL=http://host.docker.internal:8787`, resolved by the
+container's `extra_hosts: host.docker.internal:host-gateway` entry in
+`docker-compose.yml`.
+
+- `--port` / `STENGENTS_COACH_HOST` (defaults to `0.0.0.0`, every interface —
+  Kiln reaches this cross-host/cross-namespace, the same LAN-trust boundary as
+  Kiln's own `KILN_HOST=0.0.0.0` default) control the bind address.
+- This process is **not yet supervised** — nothing restarts it on crash or
+  reboot. Give it a systemd unit (`Restart=on-failure`) before relying on it
+  day to day; a bare `nohup`/background shell will not survive a reboot or a
+  crashed model call.
+- The model connection preflights once at startup (same check `stengents run`
+  and `review-benchmark` do) and is reused for every request rather than
+  re-resolved per call.
+
 ## Run
 
 Activate the project venv once (`source .venv/bin/activate`); its editable
