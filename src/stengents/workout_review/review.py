@@ -41,6 +41,19 @@ DEFAULT_MODEL_NAME = "qwen2.5:7b-8k"
 # Comparison history is capped at the 10 most recent prior instances (#19).
 HISTORY_CAP = 10
 
+# Total prior-Session SetEvidence rows across the whole prompt, regardless of how
+# many exercises carry history. HISTORY_CAP alone bounds depth per exercise, not
+# the sum across exercises — a session with several exercises each at full depth
+# can still put ~100 near-identical evidence rows in front of the model. That
+# volume causes it to lose track of the schema it was asked for earlier in the
+# prompt and just pattern-complete "more of the same" (a lost-in-the-middle
+# failure, not a context-length one: the failing prompt used under half the
+# model's context window). Subject evidence is never trimmed by this cap; only
+# history rows are, round-robined whole-prior-instance-at-a-time across
+# exercises so no single exercise's cap starves the others and no prior's sets
+# are cut mid-instance.
+MAX_HISTORY_EVIDENCE = 24
+
 # The seam onto Kiln: by-id fetch of one finished Session, injectable for tests.
 Fetch = Callable[[str], "dict | None"]
 # The seam onto the finished-Session pool comparison history is selected from.
@@ -236,14 +249,50 @@ def _candidate_evidence(session: dict, selected: dict[str, list[dict]]) -> list[
         candidates.extend(_activity_facts(workout_id, name, activity))
 
     # History sets — what progression claims compare against.
+    candidates.extend(_history_candidate_rows(selected))
+
+    return candidates
+
+
+def _history_candidate_rows(selected: dict[str, list[dict]]) -> list[Evidence]:
+    """Prior-Session set rows, round-robined per exercise and capped in total.
+
+    Builds each exercise's priors (already newest-first, capped at HISTORY_CAP)
+    into whole per-instance row groups, then takes one whole prior instance at a
+    time from each exercise in turn — never splitting a prior's own sets across
+    the cutoff — until MAX_HISTORY_EVIDENCE is reached. Round-robining instead of
+    exhausting one exercise before the next keeps every exercise represented
+    even when the total is capped; a session under budget is unaffected.
+    """
+    queues: dict[str, list[list[Evidence]]] = {}
     for name, priors in selected.items():
+        instances: list[list[Evidence]] = []
         for prior in priors:
             prior_id = prior["session"].get("id")
             if prior_id is None:
                 continue
-            candidates.extend(_set_rows(prior_id, name, prior["activity"]))
+            rows = _set_rows(prior_id, name, prior["activity"])
+            if rows:
+                instances.append(rows)
+        if instances:
+            queues[name] = instances
 
-    return candidates
+    rows: list[Evidence] = []
+    pointers = {name: 0 for name in queues}
+    active = list(queues.keys())
+    while active and len(rows) < MAX_HISTORY_EVIDENCE:
+        for name in list(active):
+            position = pointers[name]
+            if position >= len(queues[name]):
+                active.remove(name)
+                continue
+            instance = queues[name][position]
+            if rows and len(rows) + len(instance) > MAX_HISTORY_EVIDENCE:
+                active.remove(name)
+                continue
+            rows.extend(instance)
+            pointers[name] = position + 1
+    return rows
 
 
 def _set_rows(workout_id: str, exercise: str | None, activity: dict) -> list[Evidence]:

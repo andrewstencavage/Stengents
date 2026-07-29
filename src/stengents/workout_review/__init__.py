@@ -33,7 +33,30 @@ contract types.
 #   limitation, lifting ``required_limitation_recall`` 0.667 -> 0.833 with both
 #   safety floors held and the gate PASS. c05 (visible skipped signal) still
 #   misses — a nudge-strength gap, not a visibility gap.
-CAPABILITY_VERSION = "0.4.0"
+# 0.5.0 — cap total history evidence (no ticket filed yet). HISTORY_CAP bounds
+#   comparison depth per exercise but never the total across a session; a real
+#   session with several exercises at full history depth reached ~95 candidate
+#   rows and the model degraded to echoing the last row instead of the
+#   summary/observations/limitations schema — confirmed NOT a context-length
+#   failure (prompt_tokens=4098 of an 8192 window) but a lost-in-the-middle
+#   failure from sheer homogeneous-row volume; a larger-context model
+#   (deepseek-64k) reproduced the same failure at 433s, ruling out "bigger
+#   model" as a fix. MAX_HISTORY_EVIDENCE round-robins one whole prior instance
+#   at a time per exercise so no exercise is starved and no prior's sets are
+#   split, capping the total rather than any single exercise's depth. Changes
+#   the candidate set, so a distinct baseline from 0.4.0's. Live-verified first
+#   (95 -> 69 candidates, real session recovers a well-formed review), then a
+#   warm qwen2.5:7b-8k A/B (corpus 7e40ed6e) holds both safety floors and
+#   schema_valid_rate at 1.0, and *lifts* required_detail_recall 0.618 -> 0.660
+#   and cases_passing 4 -> 5, with required_limitation_recall unchanged at
+#   0.833 and the gate PASS -> PASS. Expected, not surprising: the 12-case
+#   corpus has no session large enough to hit MAX_HISTORY_EVIDENCE at all, so
+#   this A/B cannot exercise the actual fix — it only confirms no regression on
+#   corpus-scale sessions. The corpus having no case resembling the real
+#   failure (many exercises, deep real history) is exactly why the original
+#   regression shipped undetected, and remains true after this change; adding
+#   such a case is unstarted follow-up work.
+CAPABILITY_VERSION = "0.5.0"
 
 from .contract import (
     Category,

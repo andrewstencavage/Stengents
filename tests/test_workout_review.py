@@ -13,8 +13,10 @@ from stengents.workout_review import (
 )
 from stengents.workout_review.grounding import Grounding
 from stengents.workout_review.review import (
+    MAX_HISTORY_EVIDENCE,
     _build_prompt,
     _candidate_evidence,
+    _history_candidate_rows,
     _malformed_set_notes,
     _resolve_evidence,
     select_comparison_history,
@@ -149,6 +151,50 @@ def test_history_excludes_priors_without_performed_sets() -> None:
     history = select_comparison_history(subject, [subject, freeform])
 
     assert history["Cable Squat"] == []
+
+
+def test_history_candidate_rows_caps_the_total_across_all_exercises() -> None:
+    exercises = ["Cable Squat", "Bench Press", "Row", "Overhead Press"]
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity(name, [(10, 3.0)]) for name in exercises])
+    pool = [subject] + [
+        _session(f"p{name}{i}", f"2026-07-{10 + i:02d}T10:00:00.000Z", [_activity(name, [(10, 3.0), (8, 3.0)])])
+        for name in exercises
+        for i in range(10)
+    ]
+
+    selected = select_comparison_history(subject, pool)
+    rows = _history_candidate_rows(selected)
+
+    assert len(rows) <= MAX_HISTORY_EVIDENCE
+    # Round-robin, not first-exercise-hogs-the-budget: every exercise is represented.
+    assert {row.exercise for row in rows} == set(exercises)
+
+
+def test_history_candidate_rows_never_splits_a_prior_instance() -> None:
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
+    pool = [subject] + [
+        _session(f"p{i}", f"2026-07-{10 + i:02d}T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0), (8, 3.0), (8, 3.0)])])
+        for i in range(10)
+    ]
+
+    selected = select_comparison_history(subject, pool)
+    rows = _history_candidate_rows(selected)
+
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row.workout_id] = counts.get(row.workout_id, 0) + 1
+    assert all(count == 3 for count in counts.values())  # every included prior keeps all 3 of its sets
+
+
+def test_history_candidate_rows_is_unaffected_below_the_cap() -> None:
+    subject = _session("subj", "2026-07-24T10:00:00.000Z", [_activity("Cable Squat", [(10, 3.0)])])
+    prior = _session("prior", "2026-07-21T10:00:00.000Z", [_activity("Cable Squat", [(8, 3.0)])])
+
+    selected = select_comparison_history(subject, [subject, prior])
+    rows = _history_candidate_rows(selected)
+
+    assert len(rows) == 1
+    assert rows[0].workout_id == "prior"
 
 
 # --- generation ---------------------------------------------------------
