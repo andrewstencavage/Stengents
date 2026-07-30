@@ -34,7 +34,14 @@ class RateLimitExhausted(RuntimeError):
         self.report = report
 
 
-def _classification(error: Exception) -> str | None:
+def classify_rate_limit_error(error: Exception) -> str | None:
+    """Classify a caught error as a rate limit (and which kind), or ``None``.
+
+    Provider-neutral by design: matched via a ``status_code``, a class name,
+    or message text, so both litellm-raised and ADK-native (``google.genai``)
+    errors classify through the same function without importing either SDK
+    here.
+    """
     text = f"{getattr(error, 'body', '')!r} {error}"
     if (
         getattr(error, "status_code", None) != 429
@@ -49,7 +56,8 @@ def _classification(error: Exception) -> str | None:
     return "unknown"
 
 
-def _retry_delay(error: Exception) -> int:
+def retry_delay_seconds(error: Exception) -> int:
+    """The provider-reported ``retryDelay``/``retry_delay``, or a 1s fallback."""
     text = f"{getattr(error, 'body', '')!r} {error}"
     match = re.search(r"(?:retryDelay|retry_delay)[^0-9]*(\d+)", text)
     return int(match.group(1)) if match else 1
@@ -78,10 +86,10 @@ def execute_with_rate_limit(
                 "cumulative_wait_seconds": cumulative_wait,
             }
         except Exception as error:
-            classification = _classification(error)
+            classification = classify_rate_limit_error(error)
             if classification is None:
                 raise
-            delay = _retry_delay(error)
+            delay = retry_delay_seconds(error)
             can_wait = (
                 policy.on_rate_limit == "wait"
                 and classification != "per-day"

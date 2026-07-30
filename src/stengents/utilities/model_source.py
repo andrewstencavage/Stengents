@@ -23,7 +23,7 @@ from urllib.request import Request, urlopen
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.models import Gemini
 
-from .rate_limit import RateLimitPolicy
+from .rate_limit import RateLimitPolicy, classify_rate_limit_error, retry_delay_seconds
 
 OPENAI_COMPATIBLE_PROVIDER = "openai-compatible"
 GOOGLE_AI_STUDIO_PROVIDER = "google-ai-studio"
@@ -41,9 +41,16 @@ Opener = Callable[..., object]
 # failure rate against a fixed 3-try, no-backoff retry, concentrated in bursts
 # consistent with backend load rather than one-off blips. Retrying immediately
 # into the same overloaded backend does not help, so each retry backs off for
-# ``attempt * _GEMINI_RETRY_BACKOFF_SECONDS`` before trying again.
+# ``attempt * _GEMINI_RETRY_BACKOFF_SECONDS`` before trying again -- unless the
+# error classifies as a rate limit (``classify_rate_limit_error``), in which
+# case the wait is the provider-reported ``retry_delay_seconds`` instead, a
+# ``per-day`` classification skips retry entirely (it cannot clear within this
+# call), and every wait is bounded by
+# ``_GEMINI_RETRY_MAX_CUMULATIVE_WAIT_SECONDS`` so one completion call cannot
+# stall on an unexpectedly large reported delay.
 _GEMINI_RETRY_ATTEMPTS = 5
 _GEMINI_RETRY_BACKOFF_SECONDS = 2.0
+_GEMINI_RETRY_MAX_CUMULATIVE_WAIT_SECONDS = 30
 
 
 class ModelSourceUnavailable(RuntimeError):
@@ -180,9 +187,21 @@ class ModelConnection:
 
         transient_errors = (InternalServerError, ServiceUnavailableError, RateLimitError, Timeout, APIConnectionError)
         last_error: Exception | None = None
+        cumulative_wait = 0.0
         for attempt in range(_GEMINI_RETRY_ATTEMPTS):
             if attempt > 0:
-                sleep(attempt * _GEMINI_RETRY_BACKOFF_SECONDS)
+                classification = classify_rate_limit_error(last_error)
+                if classification == "per-day":
+                    raise last_error
+                delay = (
+                    retry_delay_seconds(last_error)
+                    if classification in ("per-minute", "unknown")
+                    else attempt * _GEMINI_RETRY_BACKOFF_SECONDS
+                )
+                if cumulative_wait + delay > _GEMINI_RETRY_MAX_CUMULATIVE_WAIT_SECONDS:
+                    raise last_error
+                sleep(delay)
+                cumulative_wait += delay
             try:
                 return completion(
                     model=f"gemini/{self.name}",

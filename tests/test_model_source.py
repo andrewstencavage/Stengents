@@ -275,3 +275,75 @@ def test_complete_does_not_retry_a_non_transient_gemini_error() -> None:
 
     with pytest.raises(ValueError, match="not a transient error"):
         _gemini_connection().complete("system prompt", "user prompt", completion=completion, sleep=lambda _seconds: None)
+
+
+# --- complete's quota-aware retry (shares rate_limit.py's classifier) ---
+
+
+def test_complete_does_not_retry_a_per_day_quota_error() -> None:
+    from litellm import RateLimitError
+
+    attempts = []
+    sleeps = []
+
+    def completion(**kwargs):
+        attempts.append(kwargs)
+        raise RateLimitError(
+            message="429 RESOURCE_EXHAUSTED: quotaId GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+            llm_provider="gemini",
+            model=kwargs["model"],
+        )
+
+    with pytest.raises(RateLimitError):
+        _gemini_connection().complete("system prompt", "user prompt", completion=completion, sleep=sleeps.append)
+
+    assert len(attempts) == 1
+    assert sleeps == []
+
+
+def test_complete_waits_the_reported_retry_delay_for_a_per_minute_quota_error() -> None:
+    from litellm import RateLimitError
+
+    attempts = []
+    sleeps = []
+
+    def completion(**kwargs):
+        attempts.append(kwargs)
+        if len(attempts) < 2:
+            raise RateLimitError(
+                message=(
+                    "429 RESOURCE_EXHAUSTED: quotaId "
+                    "GenerateRequestsPerMinutePerProjectPerModel-FreeTier; retryDelay 12s"
+                ),
+                llm_provider="gemini",
+                model=kwargs["model"],
+            )
+        return _reply("ok")
+
+    result = _gemini_connection().complete(
+        "system prompt", "user prompt", completion=completion, sleep=sleeps.append
+    )
+
+    assert result == "ok"
+    assert sleeps == [12.0]
+
+
+def test_complete_gives_up_when_the_reported_retry_delay_exceeds_the_cumulative_cap() -> None:
+    from litellm import RateLimitError
+
+    attempts = []
+
+    def completion(**kwargs):
+        attempts.append(kwargs)
+        raise RateLimitError(
+            message="429 RESOURCE_EXHAUSTED: quotaId GenerateRequestsPerMinute; retryDelay 9999s",
+            llm_provider="gemini",
+            model=kwargs["model"],
+        )
+
+    with pytest.raises(RateLimitError):
+        _gemini_connection().complete(
+            "system prompt", "user prompt", completion=completion, sleep=lambda _seconds: None
+        )
+
+    assert len(attempts) == 1
