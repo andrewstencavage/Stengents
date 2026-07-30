@@ -36,13 +36,12 @@ endpoint.
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass
 from typing import Callable, Literal
 
 from farm_system.kiln_coach import kiln_client
 from farm_system.kiln_coach.kiln_client import performed_sets
-from stengents.utilities.model_source import GOOGLE_AI_STUDIO_PROVIDER, ModelConnection, resolve_model
+from stengents.utilities.model_source import ModelConnection, resolve_model
 
 from .contract import (
     Evidence,
@@ -928,68 +927,9 @@ def _factual_summary(session: dict) -> str:
 def _complete_with_model(model: ModelConnection, prompt: str) -> str:
     """The default model call: one JSON-mode completion over the endpoint.
 
-    Kept behind the ``complete`` seam so tests never reach the network. Branches
-    on provider the same way ``ModelConnection.llm`` does: Google AI Studio goes
-    through litellm's native ``gemini/`` route (no ``api_base`` — that's Google's
-    hosted endpoint, not the OpenAI-compatible gym connection), everything else
-    keeps using the OpenAI-compatible connection ``model_source`` resolves for
-    kiln_coach.
+    Kept behind the ``complete`` seam so tests never reach the network.
+    Provider branching, transient-error retry, and the litellm call itself all
+    live on ``ModelConnection.complete``, so this is just a fixed-``_SYSTEM``
+    binding.
     """
-    from litellm import completion
-
-    messages = [
-        {"role": "system", "content": _SYSTEM},
-        {"role": "user", "content": prompt},
-    ]
-    if model.provider == GOOGLE_AI_STUDIO_PROVIDER:
-        response = _complete_gemini_with_retry(completion, model, messages)
-    else:
-        response = completion(
-            model=f"openai/{model.name}",
-            api_base=f"{model.base_url.rstrip('/')}/v1",
-            api_key=model.api_key,
-            messages=messages,
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
-    return response["choices"][0]["message"]["content"]
-
-
-_GEMINI_RETRY_ATTEMPTS = 5
-_GEMINI_RETRY_BACKOFF_SECONDS = 2.0
-
-
-def _complete_gemini_with_retry(completion, model: ModelConnection, messages: list[dict]):
-    """Google's Gemini backend returns occasional transient server-side errors
-    for Gemma models — observed in practice as 500 ``InternalServerError`` and
-    503 ``ServiceUnavailableError`` ("high demand"), independent of prompt
-    content — plus the usual transient ``RateLimitError``/``Timeout``/
-    ``APIConnectionError`` any hosted API can throw under load. A bare call
-    surfaces any of these as an unhandled exception that the caller degrades
-    into a claim-free finding, which silently corrupts benchmark scores (a
-    persistent failure reads as a real quality miss, not an outage) — a
-    12-case live run measured a ~24% call failure rate against a fixed 3-try,
-    no-backoff retry, concentrated in bursts consistent with backend load
-    rather than one-off blips. Retrying immediately into the same overloaded
-    backend does not help, so each retry backs off for
-    ``attempt * _GEMINI_RETRY_BACKOFF_SECONDS`` before trying again.
-    """
-    from litellm import APIConnectionError, InternalServerError, RateLimitError, ServiceUnavailableError, Timeout
-
-    transient_errors = (InternalServerError, ServiceUnavailableError, RateLimitError, Timeout, APIConnectionError)
-    last_error: Exception | None = None
-    for attempt in range(_GEMINI_RETRY_ATTEMPTS):
-        if attempt > 0:
-            time.sleep(attempt * _GEMINI_RETRY_BACKOFF_SECONDS)
-        try:
-            return completion(
-                model=f"gemini/{model.name}",
-                api_key=model.api_key,
-                messages=messages,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-        except transient_errors as error:
-            last_error = error
-    assert last_error is not None
-    raise last_error
+    return model.complete(_SYSTEM, prompt)

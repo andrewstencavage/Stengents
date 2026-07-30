@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, Literal
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -31,6 +32,18 @@ _PROVIDERS = frozenset({OPENAI_COMPATIBLE_PROVIDER, GOOGLE_AI_STUDIO_PROVIDER})
 # A minimal urlopen-shaped opener: called with (url_or_request, timeout) and
 # returning a context manager whose value is read as the HTTP response body.
 Opener = Callable[..., object]
+
+# Google's Gemini backend returns occasional transient server-side errors for
+# Gemma models -- observed in practice as 500 InternalServerError and 503
+# ServiceUnavailableError ("high demand"), independent of prompt content --
+# plus the usual transient RateLimitError/Timeout/APIConnectionError any
+# hosted API can throw under load. A 12-case live run measured a ~24% call
+# failure rate against a fixed 3-try, no-backoff retry, concentrated in bursts
+# consistent with backend load rather than one-off blips. Retrying immediately
+# into the same overloaded backend does not help, so each retry backs off for
+# ``attempt * _GEMINI_RETRY_BACKOFF_SECONDS`` before trying again.
+_GEMINI_RETRY_ATTEMPTS = 5
+_GEMINI_RETRY_BACKOFF_SECONDS = 2.0
 
 
 class ModelSourceUnavailable(RuntimeError):
@@ -116,6 +129,72 @@ class ModelConnection:
                 last_error = error
         assert last_error is not None
         raise ModelSourceUnavailable(f"tool_call_incompatible: {type(last_error).__name__}") from last_error
+
+    def complete(
+        self,
+        system: str,
+        prompt: str,
+        *,
+        response_format: Literal["json_object", "text"] = "json_object",
+        completion: Callable[..., object] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> str:
+        """One completion over this connection, branching on provider.
+
+        Google AI Studio goes through litellm's native ``gemini/`` route (no
+        ``api_base`` -- that's Google's hosted endpoint, not the OpenAI-
+        compatible gym connection) with a bounded retry over transient
+        backend errors; everything else uses the OpenAI-compatible connection
+        directly, with no retry. ``completion`` and ``sleep`` are injectable so
+        both branches -- including the retry/backoff loop -- are testable
+        without a live endpoint or a real wait.
+        """
+        from litellm import completion as _default_completion
+
+        call = completion or _default_completion
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        if self.provider == GOOGLE_AI_STUDIO_PROVIDER:
+            response = self._complete_gemini_with_retry(call, messages, response_format, sleep)
+        else:
+            response = call(
+                model=f"openai/{self.name}",
+                api_base=f"{self.base_url.rstrip('/')}/v1",
+                api_key=self.api_key,
+                messages=messages,
+                temperature=0.0,
+                response_format={"type": response_format},
+            )
+        return response["choices"][0]["message"]["content"]
+
+    def _complete_gemini_with_retry(
+        self,
+        completion: Callable[..., object],
+        messages: list[dict],
+        response_format: Literal["json_object", "text"],
+        sleep: Callable[[float], None],
+    ) -> object:
+        from litellm import APIConnectionError, InternalServerError, RateLimitError, ServiceUnavailableError, Timeout
+
+        transient_errors = (InternalServerError, ServiceUnavailableError, RateLimitError, Timeout, APIConnectionError)
+        last_error: Exception | None = None
+        for attempt in range(_GEMINI_RETRY_ATTEMPTS):
+            if attempt > 0:
+                sleep(attempt * _GEMINI_RETRY_BACKOFF_SECONDS)
+            try:
+                return completion(
+                    model=f"gemini/{self.name}",
+                    api_key=self.api_key,
+                    messages=messages,
+                    temperature=0.0,
+                    response_format={"type": response_format},
+                )
+            except transient_errors as error:
+                last_error = error
+        assert last_error is not None
+        raise last_error
 
 
 def resolve_model(default_name: str, *, name: str | None = None) -> ModelConnection:

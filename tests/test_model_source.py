@@ -181,3 +181,97 @@ def test_preflight_passes_when_the_model_calls_a_tool() -> None:
     )
 
     assert _CONNECTION.preflight(opener=opener) is None
+
+
+# --- complete (driven through a fake completion callable, no network) ---
+
+
+def _reply(text: str) -> dict:
+    return {"choices": [{"message": {"content": text}}]}
+
+
+def test_complete_calls_the_openai_compatible_endpoint() -> None:
+    calls: list[dict] = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return _reply("hi")
+
+    result = _CONNECTION.complete("system prompt", "user prompt", completion=completion)
+
+    assert result == "hi"
+    assert calls == [
+        {
+            "model": "openai/qwen2.5:7b-8k",
+            "api_base": "http://gym:11434/v1",
+            "api_key": "local",
+            "messages": [
+                {"role": "system", "content": "system prompt"},
+                {"role": "user", "content": "user prompt"},
+            ],
+            "temperature": 0.0,
+            "response_format": {"type": "json_object"},
+        }
+    ]
+
+
+def test_complete_honors_the_response_format_parameter() -> None:
+    calls: list[dict] = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return _reply("hi")
+
+    _CONNECTION.complete("system prompt", "user prompt", response_format="text", completion=completion)
+
+    assert calls[0]["response_format"] == {"type": "text"}
+
+
+def _gemini_connection() -> ModelConnection:
+    return ModelConnection("gemini-2.5-flash", "unused", "gemini-secret", resolved_provider="google-ai-studio")
+
+
+def test_complete_retries_a_transient_gemini_error_then_succeeds() -> None:
+    from litellm import InternalServerError
+
+    attempts = []
+    sleeps = []
+
+    def completion(**kwargs):
+        attempts.append(kwargs)
+        if len(attempts) < 3:
+            raise InternalServerError(message="high demand", llm_provider="gemini", model=kwargs["model"])
+        return _reply("ok")
+
+    result = _gemini_connection().complete(
+        "system prompt", "user prompt", completion=completion, sleep=sleeps.append
+    )
+
+    assert result == "ok"
+    assert len(attempts) == 3
+    assert attempts[0]["model"] == "gemini/gemini-2.5-flash"
+    assert "api_base" not in attempts[0]
+    assert sleeps == [2.0, 4.0]
+
+
+def test_complete_gives_up_after_five_gemini_attempts() -> None:
+    from litellm import ServiceUnavailableError
+
+    attempts = []
+
+    def completion(**kwargs):
+        attempts.append(kwargs)
+        raise ServiceUnavailableError(message="overloaded", llm_provider="gemini", model=kwargs["model"])
+
+    with pytest.raises(ServiceUnavailableError):
+        _gemini_connection().complete("system prompt", "user prompt", completion=completion, sleep=lambda _seconds: None)
+
+    assert len(attempts) == 5
+
+
+def test_complete_does_not_retry_a_non_transient_gemini_error() -> None:
+    def completion(**kwargs):
+        raise ValueError("not a transient error")
+
+    with pytest.raises(ValueError, match="not a transient error"):
+        _gemini_connection().complete("system prompt", "user prompt", completion=completion, sleep=lambda _seconds: None)
