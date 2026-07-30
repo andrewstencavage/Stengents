@@ -53,3 +53,22 @@ def test_turn_logger_appends_one_jsonl_line_per_turn(tmp_path) -> None:
         "name": "get_workouts", "args": {}, "outcome": "ok",
         "duration_ms": record["tool_calls"][0]["duration_ms"], "result_summary": {"workout_count": 16, "workouts": "[16 items]"},
     }
+
+
+def test_turn_logger_records_a_tool_error_with_its_message(tmp_path) -> None:
+    logger = TurnLogger(model={"provider": "openai-compatible", "name": "qwen2.5:7b"}, log_path=tmp_path / "turns.jsonl")
+    ctx = SimpleNamespace(invocation_id="inv-1", session=None, user_content=None)
+    tool = SimpleNamespace(name="get_workouts")
+    tool_ctx = SimpleNamespace(invocation_id="inv-1", function_call_id="call-1")
+
+    logger.before_agent(callback_context=ctx)
+    logger.before_tool(tool=tool, args={}, tool_context=tool_ctx)
+    logger.on_tool_error(tool=tool, args={}, tool_context=tool_ctx, error=ConnectionError("kiln unreachable"))
+    logger.after_agent(callback_context=ctx)
+
+    record = json.loads((tmp_path / "turns.jsonl").read_text().splitlines()[0])
+    assert record["tool_calls"][0] == {
+        "name": "get_workouts", "args": {}, "outcome": "error",
+        "duration_ms": record["tool_calls"][0]["duration_ms"], "error": "ConnectionError: kiln unreachable",
+    }
+    assert record["outcome"] == "errored" and record["error"] == "tool_error"

@@ -128,6 +128,18 @@ def test_read_returns_a_rejection_for_a_path_outside_the_fixture(tmp_path: Path)
     assert actions.events[-1]["outcome"] == "ok"
 
 
+def test_write_records_the_error_message_when_the_underlying_write_fails(tmp_path: Path) -> None:
+    (tmp_path / "source.py").write_text("value = 1\n")
+    fixture = Fixture("fixture", tmp_path, ("missing_dir/nested.py",), (sys.executable, "-c", ""))
+    actions = Actions(tmp_path, fixture, RunBudget(), time.monotonic())
+
+    with pytest.raises(FileNotFoundError):
+        actions.write_source_file("missing_dir/nested.py", "value = 2\n")
+
+    assert actions.events[-1]["outcome"] == "error"
+    assert actions.events[-1]["error"].startswith("FileNotFoundError")
+
+
 def test_read_returns_a_rejection_for_a_missing_fixture_file(tmp_path: Path) -> None:
     (tmp_path / "source.py").write_text("value = 1\n")
     fixture = Fixture("fixture", tmp_path, ("source.py",), (sys.executable, "-c", ""))

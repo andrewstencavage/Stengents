@@ -9,8 +9,10 @@ verification-based outcome: a Turn records whether the exchange *ran cleanly*,
 not whether an answer was *correct*.
 
 ``build_turn_record`` is pure and unit-tested; the ``TurnLogger`` methods are the
-thin ADK-callback shell that fills a per-Turn buffer and appends the line. The
-payload reducer lives in :mod:`stengents.utilities.observation`.
+thin ADK-callback shell that fills a per-Turn buffer and appends the line. Each
+tool call's own bounded record comes from ``build_call_record`` in
+:mod:`stengents.utilities.observation` (shared with the harness's tool-event
+capture); the payload reducer beneath both lives there too.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .observation import reduce_value
+from .observation import build_call_record
 
 DEFAULT_LOG_PATH = Path(".stengents/turns.jsonl")
 
@@ -154,13 +156,12 @@ class TurnLogger:
         if buffer is None:
             return
         try:
-            buffer.tool_calls.append({
-                "name": str(getattr(tool, "name", "unknown")),
-                "args": reduce_value(args),
-                "outcome": "ok",
-                "duration_ms": self._tool_duration_ms(buffer, tool_context),
-                "result_summary": reduce_value(tool_response),
-            })
+            buffer.tool_calls.append(build_call_record(
+                str(getattr(tool, "name", "unknown")),
+                args,
+                self._tool_duration_ms(buffer, tool_context),
+                result=tool_response,
+            ))
         except Exception:
             pass
 
@@ -169,13 +170,12 @@ class TurnLogger:
         if buffer is None:
             return
         try:
-            buffer.tool_calls.append({
-                "name": str(getattr(tool, "name", "unknown")),
-                "args": reduce_value(args),
-                "outcome": "error",
-                "duration_ms": self._tool_duration_ms(buffer, tool_context),
-                "error": f"{type(error).__name__}: {error}",
-            })
+            buffer.tool_calls.append(build_call_record(
+                str(getattr(tool, "name", "unknown")),
+                args,
+                self._tool_duration_ms(buffer, tool_context),
+                error=error,
+            ))
         except Exception:
             pass
 

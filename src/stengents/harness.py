@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, TypeVar
 
 from .run_record import build_run_record
-from .utilities.observation import reduce_value
+from .utilities.observation import build_call_record
 from .utilities.rate_limit import RateLimitExhausted, RateLimitPolicy, execute_with_rate_limit
 
 
@@ -61,14 +61,15 @@ class Actions:
         if time.monotonic() - self.started > self.budget.elapsed_seconds:
             raise RunBudgetExceeded("run elapsed-time budget exhausted")
         offset = round((time.monotonic() - self.started) * 1000)
-        reduced_args = reduce_value(args or {})
         action_started = time.monotonic()
         try:
             result = operation()
-        except Exception:
-            self.events.append({"name": name, "args": reduced_args, "started_offset_ms": offset, "duration_ms": round((time.monotonic() - action_started) * 1000), "outcome": "error"})
+        except Exception as error:
+            record = build_call_record(name, args or {}, round((time.monotonic() - action_started) * 1000), error=error)
+            self.events.append({**record, "started_offset_ms": offset})
             raise
-        self.events.append({"name": name, "args": reduced_args, "started_offset_ms": offset, "duration_ms": round((time.monotonic() - action_started) * 1000), "outcome": "ok", "result_summary": reduce_value(result)})
+        record = build_call_record(name, args or {}, round((time.monotonic() - action_started) * 1000), result=result)
+        self.events.append({**record, "started_offset_ms": offset})
         return result
 
     def list_files(self) -> list[str]:
