@@ -55,6 +55,19 @@ def fetch_workout(workout_id: str, *, limit: int = 100, base: str | None = None,
     return None
 
 
+def fetch_plans(*, base: str | None = None, timeout: int = 10) -> list[dict]:
+    """Fetch every Plan (active, historical, and draft) over the LAN HTTP API.
+
+    Kiln's own rule holds at most one activated (active/historical) Plan per
+    calendar week, keyed by ``weekStart`` — the Plan streak computation relies
+    on that to look up one Plan per week. Drafts are included but should be
+    filtered out by callers that only care about weeks that were actually run.
+    """
+    root = (base or base_url()).rstrip("/")
+    with urlopen(f"{root}/api/plans", timeout=timeout) as response:
+        return json.load(response)
+
+
 def performed_sets(activity: dict) -> list[dict]:
     """Project one Activity's performed sets onto the ``SetEvidence`` shape.
 

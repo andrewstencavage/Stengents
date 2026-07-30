@@ -252,7 +252,7 @@ def _aggregate(*, evidence=1.0, unsupported=0.0, detail=0.66, limitation=0.333) 
 
 
 def _clean_review() -> WorkoutReview:
-    return WorkoutReview(workout_id="w1", summary="clean", observations=[], limitations=[])
+    return WorkoutReview(workout_id="w1", observations=[], limitations=[])
 
 
 def _ungrounded_review() -> WorkoutReview:
@@ -260,7 +260,7 @@ def _ungrounded_review() -> WorkoutReview:
     violation on both evidence-validity and unsupported-claim."""
     bogus = SetEvidence(workout_id="w1", exercise="Ghost", set_index=0, reps=5, load=10.0, loadType="plate")
     observation = Observation(kind="fact", confidence="firm", category="performance", claim="up", evidence=[bogus])
-    return WorkoutReview(workout_id="w1", summary="bad", observations=[observation], limitations=[])
+    return WorkoutReview(workout_id="w1", observations=[observation], limitations=[])
 
 
 def test_gate_passes_with_no_retest_when_floors_met() -> None:

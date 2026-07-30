@@ -108,6 +108,11 @@ def _review_case(
         case.subject_workout_id,
         fetch=(lambda workout_id, _by_id=by_id: _by_id.get(workout_id)),
         fetch_history=(lambda _pool=case.pool: list(_pool)),
+        # The corpus carries only raw Session JSON, no Plan data (#20) — no case
+        # can exercise the Plan streak (ADR 0004) until a case adds one. An empty
+        # Plan list keeps this fully offline rather than defaulting to a live
+        # Kiln fetch, matching every other seam here.
+        fetch_plans=(lambda: []),
         model=model,
         complete=complete,
     )

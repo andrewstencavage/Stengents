@@ -1,7 +1,9 @@
-"""The locked Workout Review output contract (issue #17).
+"""The locked Workout Review output contract (issue #17, amended ADR 0004).
 
-Pure content models: a ``WorkoutReview`` carries a factual summary, at most
-three evidence-backed ``Observation``s, and any acknowledged ``Limitation``s.
+Pure content models: a ``WorkoutReview`` carries evidence-backed
+``Observation``s (uncapped as of ADR 0004 — one per exercise touched, plus an
+adherence Observation when a Plan streak is active) and any acknowledged
+``Limitation``s. No ``summary`` field — dropped in ADR 0004 as unused filler.
 Nothing operational lives here — model, latency, cost, and version belong to the
 run record, never inside a review. Every closed vocabulary below is passed
 through verbatim from Kiln (pinned in #18) or fixed by the contract (#17).
@@ -92,10 +94,9 @@ class Limitation(_Content):
 
 
 class WorkoutReview(_Content):
-    """The review of one finished Kiln Session: a factual summary, 0–3
-    Observations (hard-capped), and any Limitations. A pure content object."""
+    """The review of one finished Kiln Session: Observations (uncapped, ADR
+    0004) and any Limitations. A pure content object."""
 
     workout_id: str
-    summary: str
-    observations: list[Observation] = Field(default_factory=list, max_length=3)
+    observations: list[Observation] = Field(default_factory=list)
     limitations: list[Limitation] = Field(default_factory=list)

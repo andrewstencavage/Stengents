@@ -8,8 +8,9 @@ structured records, and a repeatable outcome that never depends on a model call.
 
 The checks (fixed in #17/#19/#20):
 
-* **schema-valid** — the review is a valid ``WorkoutReview`` (≤3 observations,
-  each with ≥1 evidence row; re-asserted here rather than trusted).
+* **schema-valid** — the review is a valid ``WorkoutReview`` (observations
+  uncapped as of ADR 0004, each still needing ≥1 evidence row; re-asserted
+  here rather than trusted).
 * **evidence grounding** — every cited ``Evidence`` row resolves verbatim to real
   data derivable from the pool: a ``SetEvidence`` row matches a row produced by
   ``performed_sets`` over the referenced Session's activity; a ``FactEvidence``

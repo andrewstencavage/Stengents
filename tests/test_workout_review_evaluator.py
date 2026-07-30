@@ -58,7 +58,6 @@ def _gold_review(case: Case) -> WorkoutReview:
     ]
     return WorkoutReview(
         workout_id=case.subject_workout_id,
-        summary="factual summary",
         observations=observations,
         limitations=limitations,
     )
@@ -93,7 +92,6 @@ def test_clean_progression_review_with_prior_evidence_is_supported() -> None:
     subject, prior = case.required_evidence[0], case.required_evidence[1]
     review = WorkoutReview(
         workout_id=case.subject_workout_id,
-        summary="up from last time",
         observations=[
             Observation(
                 kind="inference",
@@ -127,7 +125,6 @@ def test_invented_evidence_fails_grounding_and_recall() -> None:
     )
     review = WorkoutReview(
         workout_id=case.subject_workout_id,
-        summary="s",
         observations=[
             Observation(
                 kind="fact",
@@ -163,7 +160,6 @@ def test_invalid_fact_value_does_not_resolve() -> None:
     )
     review = WorkoutReview(
         workout_id=case.subject_workout_id,
-        summary="s",
         observations=[
             Observation(kind="fact", confidence="firm", category="adherence", claim="c", evidence=[wrong])
         ],
@@ -182,7 +178,6 @@ def test_forbidden_progression_observation_is_flagged() -> None:
     hack_set = _ev(case.required_evidence[0])  # the Hack Squat set
     review = WorkoutReview(
         workout_id=case.subject_workout_id,
-        summary="s",
         observations=[
             Observation(
                 kind="inference",
@@ -209,7 +204,6 @@ def test_missing_required_limitation_is_flagged() -> None:
     case = _case("c07-insufficient-history")
     review = WorkoutReview(
         workout_id=case.subject_workout_id,
-        summary="s",
         observations=[
             Observation(
                 kind="fact",
@@ -232,7 +226,6 @@ def test_limitation_of_right_kind_not_naming_exercise_does_not_match() -> None:
     case = _case("c07-insufficient-history")
     review = WorkoutReview(
         workout_id=case.subject_workout_id,
-        summary="s",
         observations=[
             Observation(
                 kind="fact",
@@ -260,7 +253,6 @@ def test_progression_claim_without_prior_evidence_is_unsupported() -> None:
     assert subject_set.workout_id == case.subject_workout_id
     review = WorkoutReview(
         workout_id=case.subject_workout_id,
-        summary="s",
         observations=[
             Observation(
                 kind="inference",
@@ -285,20 +277,20 @@ def test_progression_claim_without_prior_evidence_is_unsupported() -> None:
 # --------------------------------------------------------------------------- #
 def test_schema_invalid_review_fails_and_zeroes_downstream() -> None:
     case = _case("c02-improvement-vs-history")
-    # Four observations violates the ≤3 hard cap — invalid as a dict payload.
+    # An out-of-vocabulary category is invalid as a dict payload (the ADR 0004
+    # cap removal means observation *count* alone can no longer make this
+    # invalid — this exercises the same "reject a bad dict" path via content).
     bad = {
         "workout_id": case.subject_workout_id,
-        "summary": "s",
         "observations": [
             {
                 "kind": "fact",
                 "confidence": "firm",
-                "category": "performance",
+                "category": "not_a_real_category",
                 "claim": "c",
                 "evidence": [case.required_evidence[0]],
             }
-        ]
-        * 4,
+        ],
         "limitations": [],
     }
     result = evaluate_review(bad, case)
@@ -312,7 +304,6 @@ def test_evidence_free_observation_is_schema_invalid() -> None:
     case = _case("c02-improvement-vs-history")
     bad = {
         "workout_id": case.subject_workout_id,
-        "summary": "s",
         "observations": [
             {"kind": "fact", "confidence": "firm", "category": "performance", "claim": "c", "evidence": []}
         ],
@@ -343,7 +334,7 @@ def test_aggregate_reflects_a_single_bad_case() -> None:
     # Replace one case's review with a schema-invalid one.
     bad_case = next(c for c in corpus if c.case_id == "c02-improvement-vs-history")
     results = [r for r in results if r.case_id != bad_case.case_id]
-    results.append(evaluate_review({"workout_id": "x", "summary": "s", "observations": [{}] * 4}, bad_case))
+    results.append(evaluate_review({"workout_id": "x", "observations": [{}] * 4}, bad_case))
     aggregate = aggregate_results(results)
     assert aggregate.case_count == len(corpus)
     assert aggregate.schema_valid_rate == (len(corpus) - 1) / len(corpus)
@@ -368,7 +359,6 @@ def test_evidence_validity_rate_is_row_share_across_cases() -> None:
     )
     review = WorkoutReview(
         workout_id=case.subject_workout_id,
-        summary="s",
         observations=[
             Observation(kind="fact", confidence="firm", category="performance", claim="c", evidence=[good, invented])
         ],

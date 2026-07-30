@@ -19,7 +19,6 @@ def running_server():
             raise RuntimeError("model unavailable")
         return WorkoutReview(
             workout_id=workout_id,
-            summary="Upper B: 3 exercises performed.",
             observations=[
                 Observation(
                     kind="fact",
@@ -53,7 +52,6 @@ def test_review_route_returns_the_workout_review_as_json(running_server) -> None
 
     assert calls == ["w1"]
     assert payload["workout_id"] == "w1"
-    assert payload["summary"] == "Upper B: 3 exercises performed."
     assert len(payload["observations"]) == 1
     assert payload["observations"][0]["claim"] == "Bench Press was performed for 3 sets."
     assert payload["limitations"][0]["kind"] == "insufficient_history"

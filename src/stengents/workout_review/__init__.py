@@ -204,7 +204,49 @@ contract types.
 #   faster) and the middle case; only a session where every exercise is
 #   genuinely notable still runs long, and that is an inherent, disclosed cost
 #   of decomposition rather than an unmeasured unknown.
-CAPABILITY_VERSION = "0.7.0"
+#
+# 0.8.0 — progression and selection go deterministic; comparison-history
+#   candidates and the synthesis model call are dropped (ADR 0004, no ticket
+#   filed). Real-session evidence motivated this: three live reviews scored
+#   9/9 observations as `category: performance` (plain restatement) with zero
+#   `progression`, and the one time the model attempted a cross-session
+#   comparison it confused a load in plates against a duration in seconds.
+#   `progression.top_set_delta` now computes the comparison in code — this
+#   Session's top set (highest load, ties broken by reps) vs. the single most
+#   recent prior's, reporting the first of load/set-count/reps that differs,
+#   or "held steady" on an exact match — for every exercise with comparison
+#   history; a plain deterministic recap covers exercises with none.
+#   `progression.plan_streak` adds a new `adherence` signal (consecutive
+#   fully-elapsed weeks hitting every scheduled Workout). Changes the
+#   candidate set and the generation shape, so a distinct baseline from
+#   0.7.0's. Also a #17 contract amendment (ADR 0004, out of this loop's
+#   scope but landed together): `summary` is dropped and the 0-3 `observations`
+#   cap is removed — every valid Observation is kept, no selection.
+#
+#   `synthesize()`'s model call is gone entirely: with selection deterministic
+#   and `summary` dropped, nothing was left for it to do. Extraction
+#   (unchanged in shape) is barred from proposing `progression` — by prompt
+#   instruction and a decode-time filter — since that comparison is
+#   deterministic-only now. A first cut also dropped comparison-history
+#   *context* from the extraction prompt (reasoning: extraction no longer
+#   cites it for progression, so why show it) — a live A/B caught a real,
+#   reproducible regression: c11's malformed-data limitation flipped to
+#   `missing_data` on 4/4 repeated calls with no history context, back to
+#   `malformed_data` on 4/4 once it was restored (captioned "context only,"
+#   still uncitable). The model evidently uses that context for general
+#   judgment, not just progression — reverted to keep showing it.
+#
+#   Warm qwen2.5:7b-8k A/B (corpus 7e40ed6e, same 12-case corpus as every
+#   prior version): both safety floors hold at 1.0/0.0, schema_valid_rate
+#   1.0, required_detail_recall lifts 0.75 -> 0.854 (0.7.0's baseline),
+#   required_limitation_recall holds at 0.5 (unchanged), cases_passing lifts
+#   4 -> 5, gate PASS -> PASS. The detail-recall lift is expected, not
+#   surprising: the deterministic Top-set delta always cites both the
+#   subject's and the prior's sets for every exercise with history, where the
+#   model previously cited them inconsistently. Cases without a Plan streak
+#   in their input.json (all 12 — the corpus carries no Plan data yet) never
+#   exercise that signal; adding a case that does is unstarted follow-up.
+CAPABILITY_VERSION = "0.8.0"
 
 from .contract import (
     Category,

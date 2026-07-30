@@ -3,39 +3,45 @@
 Independent of the ``kiln_coach`` chat agent. It reads one finished Session by
 its stable id from ``kiln_client``, selects each performed exercise's comparison
 history (#19), resolves the development-time model from ``model_source``, and
-asks it for an evidence-backed review — decoded strictly into the #17 contract.
+assembles an evidence-backed review — decoded strictly into the #17 contract.
 
-Generation is decomposed (#60, Wayfinder map #56), not one-shot: a per-exercise
-EXTRACTION call (``extract``, full attention on one exercise, no competition
-from the others) proposes candidate findings, and one SYNTHESIS call
-(``synthesize``) selects the best <=3 and writes the final review. Two
-independent one-shot fixes for this — a prompt nudge, then a deterministic
-hint — each regressed the corpus by displacing something the model used to get
-right elsewhere in the same completion; decomposition was chosen because it
-gives each exercise its own uncontested attention instead of asking one
-completion to do everything at once. ``_needs_extraction`` skips a call
-entirely for exercises with nothing to report — the latency lever, since the
-local endpoint is compute-bound (concurrent calls barely beat sequential ones),
-so fewer tokens processed is the only thing that meaningfully helps.
+As of ADR 0004, generation has two independent tracks, both feeding the same
+uncapped ``observations`` list with no model call selecting among them:
 
-Grounding is structural, not trusted, and unchanged by the decomposition: every
-candidate ``Evidence`` row is built here from real subject/history data and
-handed to the model *numbered*; extraction and synthesis both cite into that
-same shared, numbered pool, so a citation from either phase resolves through
-the same ``_resolve_evidence``/``Grounding`` with no new code. Any row cited
-resolves back to real Kiln data by construction.
+* **Deterministic** (:mod:`progression`, no model call): a ``progression``
+  Observation (Top-set delta) for every exercise with comparison history, a
+  plain ``performance`` recap for every exercise with none, and an
+  ``adherence`` Observation when a Plan streak is active. All built directly
+  from source data — no candidate-index indirection, nothing for a model to
+  miscalculate.
+* **Extraction** (per-exercise model call, unchanged in shape from #60): finds
+  qualitative findings — notes, skipped/malformed-data limitations — that
+  numbers alone can't surface. ``_needs_extraction`` now triggers purely on
+  those qualitative signals (a note, an explicit skip, malformed data); the
+  old numeric-change heuristic moved entirely to the deterministic track.
+  Extraction is barred from proposing ``progression`` (comparison is no
+  longer its job) both by prompt instruction and a decode-time filter — but
+  it still *sees* comparison history as context: a first attempt at dropping
+  it entirely regressed c11's malformed-data recall (4/4 reproduced, not a
+  flake), so ``build_extraction_prompt`` keeps showing it, just captioned
+  "context only."
 
-Four seams keep the whole pipeline testable offline, analogous to the existing
-``fetch``: ``fetch`` (subject by id), ``fetch_history`` (the finished-Session
-pool), ``model`` (the resolved connection), and ``complete`` (one model call,
-reused for every extraction and the synthesis call). A test injects a fake
-``complete`` returning canned structured replies and never touches the
-endpoint.
+Grounding is structural, not trusted, for both tracks: every deterministic
+Observation's evidence and every resolved extraction citation is checked
+against one shared ``Grounding`` built over the subject, its comparison
+history, and any Plan-streak milestone Sessions before entering the review.
+
+Three seams keep the whole pipeline testable offline: ``fetch`` (subject by
+id), ``fetch_history`` (the finished-Session pool), ``fetch_plans`` (every
+Plan, for the streak), ``model``, and ``complete`` (one model call, reused for
+every extraction). A test injects a fake ``complete`` returning canned
+structured replies and never touches the endpoint.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Callable, Literal
 
@@ -52,30 +58,22 @@ from .contract import (
     WorkoutReview,
 )
 from .grounding import Grounding, as_text
+from .progression import plan_streak, streak_observation, top_set_delta
 
 # The review capability wants the same larger tool-calling model kiln_coach uses.
 DEFAULT_MODEL_NAME = "qwen2.5:7b-8k"
 
 # Comparison history is capped at the 10 most recent prior instances (#19).
+# Only the newest entry is used by the deterministic Top-set delta (ADR 0004);
+# the fuller list still backs _history_limitations' insufficient-history check.
 HISTORY_CAP = 10
-
-# Total prior-Session SetEvidence rows across the whole prompt, regardless of how
-# many exercises carry history. HISTORY_CAP alone bounds depth per exercise, not
-# the sum across exercises — a session with several exercises each at full depth
-# can still put ~100 near-identical evidence rows in front of the model. That
-# volume causes it to lose track of the schema it was asked for earlier in the
-# prompt and just pattern-complete "more of the same" (a lost-in-the-middle
-# failure, not a context-length one: the failing prompt used under half the
-# model's context window). Subject evidence is never trimmed by this cap; only
-# history rows are, round-robined whole-prior-instance-at-a-time across
-# exercises so no single exercise's cap starves the others and no prior's sets
-# are cut mid-instance.
-MAX_HISTORY_EVIDENCE = 24
 
 # The seam onto Kiln: by-id fetch of one finished Session, injectable for tests.
 Fetch = Callable[[str], "dict | None"]
 # The seam onto the finished-Session pool comparison history is selected from.
 FetchHistory = Callable[..., "list[dict]"]
+# The seam onto every Plan (active/historical/draft), for the Plan streak.
+FetchPlans = Callable[..., "list[dict]"]
 # The single model call: a resolved connection + a prompt -> raw model text.
 Complete = Callable[[ModelConnection, str], str]
 
@@ -92,6 +90,7 @@ def review_workout(
     *,
     fetch: Fetch = kiln_client.fetch_workout,
     fetch_history: FetchHistory = kiln_client.fetch_sessions,
+    fetch_plans: FetchPlans = kiln_client.fetch_plans,
     model: ModelConnection | None = None,
     complete: Complete | None = None,
 ) -> WorkoutReview:
@@ -99,15 +98,14 @@ def review_workout(
 
     Returns a schema-valid ``WorkoutReview`` in every case: an unknown id yields
     a review whose only content is a ``missing_data`` Limitation, never an
-    exception. ``fetch``, ``fetch_history``, ``model``, and ``complete`` are all
-    injectable so a caller (or a test) can supply frozen data and skip the
-    endpoint entirely.
+    exception. ``fetch``, ``fetch_history``, ``fetch_plans``, ``model``, and
+    ``complete`` are all injectable so a caller (or a test) can supply frozen
+    data and skip the endpoint entirely.
     """
     session = fetch(workout_id)
     if session is None:
         return WorkoutReview(
             workout_id=workout_id,
-            summary="",
             limitations=[
                 Limitation(
                     kind="missing_data",
@@ -117,35 +115,77 @@ def review_workout(
         )
     pool = kiln_client.finished_sessions(fetch_history())
     connection = model or resolve_model(DEFAULT_MODEL_NAME)
-    return _generate_review(session, pool, connection, complete or _complete_with_model)
+    return _generate_review(session, pool, fetch_plans(), connection, complete or _complete_with_model)
 
 
 def _generate_review(
     session: dict,
     pool: list[dict],
+    plans: list[dict],
     model: ModelConnection,
     complete: Complete,
 ) -> WorkoutReview:
-    """Produce the review for a fetched Session against its comparison history.
+    """Produce the review for a fetched Session against its comparison history
+    and Plan history.
 
-    Selects per-exercise history (#19), builds grounded candidate Evidence,
-    partitions it per exercise (skipping partitions with nothing to report),
-    extracts each partition independently, then synthesizes the final review.
-    Any failure to reach or parse the model degrades to a factual, claim-free
-    review (summary + acknowledged limitations) rather than raising.
+    Builds the deterministic progression/baseline/streak Observations, runs
+    extraction for whichever exercises still need a qualitative look, grounds
+    everything against one shared pool, and assembles the final review with no
+    selection step — every Observation that grounds is kept (ADR 0004). Any
+    failure to reach or parse the model degrades to the deterministic
+    Observations alone plus acknowledged limitations, never raises.
     """
+    workout_id = session["id"]
     selected = select_comparison_history(session, pool)
-    candidates = _candidate_evidence(session, selected)
     history_limits = _history_limitations(selected)
-    grounding = review_grounding(session, selected)
     malformed = _malformed_set_notes(session)
     skipped = _skipped_exercises(session)
+    activities_by_name = {a.get("name"): a for a in session.get("activities") or [] if a.get("name")}
 
-    partitions, findings = partition_session(session, selected, candidates, malformed)
+    deterministic_observations: list[Observation] = []
+    for name, priors in selected.items():
+        activity = activities_by_name.get(name, {})
+        if priors:
+            prior_session = priors[0]["session"]
+            prior_activity = priors[0]["activity"]
+            subject_rows = _set_rows(workout_id, name, activity)
+            prior_rows = _set_rows(prior_session.get("id"), name, prior_activity)
+            delta = top_set_delta(name, subject_rows, prior_rows)
+            if delta is not None:
+                deterministic_observations.append(delta)
+        else:
+            baseline = _baseline_performance_observation(workout_id, name, activity)
+            if baseline is not None:
+                deterministic_observations.append(baseline)
+
+    streak_result = plan_streak(plans, pool, session.get("date") or "")
+    streak = streak_observation(streak_result)
+    if streak is not None:
+        deterministic_observations.append(streak)
+
+    grounding = review_grounding(session, selected, streak_result.milestones)
+    # Defense in depth: every deterministic Observation is built directly from
+    # source data and should always ground, but never trust that unconditionally.
+    deterministic_observations = [
+        observation
+        for observation in deterministic_observations
+        if all(grounding.resolves(row) for row in observation.evidence)
+    ]
+
+    candidates = _candidate_evidence(session)
+    partitions = partition_session(session, selected, candidates, malformed)
+    findings: list[ExtractionFinding] = []
     for partition in partitions:
         findings.extend(extract(partition, candidates, selected, malformed, skipped, model, complete))
 
-    return synthesize(session, findings, candidates, selected, grounding, history_limits, model, complete)
+    extraction_observations = _decode_extraction_observations(findings, candidates, grounding)
+    model_limits = _decode_limitations(
+        [{"kind": f.limitation_kind, "detail": f.limitation_detail} for f in findings if f.finding_kind == "limitation"]
+    )
+
+    observations = [*deterministic_observations, *extraction_observations]
+    limitations = _dedupe_limitations(history_limits + model_limits)
+    return WorkoutReview(workout_id=workout_id, observations=observations, limitations=limitations)
 
 
 # --- comparison history (#19) -------------------------------------------
@@ -197,15 +237,15 @@ def select_comparison_history(session: dict, pool: list[dict]) -> dict[str, list
     return history
 
 
-def review_grounding(session: dict, selected: dict[str, list[dict]]) -> Grounding:
-    """Grounding over the pool a review's evidence must resolve against.
-
-    That pool is the subject Session plus every prior Session its comparison
-    history was drawn from — the exact set every candidate is built from, so
-    every candidate (and every cited row) grounds against it. Shared with the
+def review_grounding(
+    session: dict, selected: dict[str, list[dict]], streak_milestones: Iterable[dict] = ()
+) -> Grounding:
+    """Grounding over the pool a review's evidence must resolve against: the
+    subject Session, every prior Session its comparison history was drawn
+    from, and any Plan-streak milestone Sessions (ADR 0004). Shared with the
     corpus test so production and test can't drift on what that pool is.
     """
-    pool = [session, *(prior["session"] for priors in selected.values() for prior in priors)]
+    pool = [session, *(prior["session"] for priors in selected.values() for prior in priors), *streak_milestones]
     return Grounding(pool)
 
 
@@ -224,92 +264,24 @@ def _history_limitations(selected: dict[str, list[dict]]) -> list[Limitation]:
     ]
 
 
-# --- grounded candidate evidence ----------------------------------------
+# --- deterministic Observations (ADR 0004) -------------------------------
 
 
-# A prompt "slot": one Evidence row, or (history only) a whole prior instance's
-# SetEvidence rows grouped and displayed as a single compact, single-id citable
-# unit. Grouping never touches contract.py — a cited group slot still expands to
-# however many real, individually-grounded SetEvidence rows it contains; only
-# the number of *visible* rows the model has to read shrinks.
-Candidate = Evidence | list[SetEvidence]
-
-
-def _candidate_evidence(session: dict, selected: dict[str, list[dict]]) -> list[Candidate]:
-    """Build every citable prompt slot from real subject and history data.
-
-    The model never emits raw evidence values — it selects from this list by its
-    1-based position, so every cited row is real by construction. Rows that do
-    not satisfy the closed contract vocabularies (e.g. an unrecognised
-    ``loadType``) are silently skipped rather than crashing generation.
-    """
-    workout_id = session["id"]
-    candidates: list[Candidate] = []
-
-    # Subject session-level facts.
-    candidates.extend(_session_facts(workout_id, session))
-
-    # Subject sets and activity-level facts. Kept ungrouped (one row per set, as
-    # before) — subject evidence is typically small and the data-quality checks
-    # (0.3.0/0.4.0) need to point at one specific subject set, not a group.
-    for activity in session.get("activities") or []:
-        name = activity.get("name")
-        candidates.extend(_set_rows(workout_id, name, activity))
-        candidates.extend(_activity_facts(workout_id, name, activity))
-
-    # History sets — what progression claims compare against. Grouped whole prior
-    # instance at a time: the same information a flat set of rows would carry, in
-    # far fewer visible rows (#see MAX_HISTORY_EVIDENCE / 0.5.0's cap).
-    candidates.extend(_history_candidate_groups(selected))
-
-    return candidates
-
-
-def _history_candidate_groups(selected: dict[str, list[dict]]) -> list[list[SetEvidence]]:
-    """Prior-Session set rows, grouped whole-instance-per-slot, round-robined per
-    exercise, and capped in total underlying rows (not slot count).
-
-    Builds each exercise's priors (already newest-first, capped at HISTORY_CAP)
-    into whole per-instance row groups, then takes one whole prior instance at a
-    time from each exercise in turn — never splitting a prior's own sets across
-    the cutoff — until MAX_HISTORY_EVIDENCE real SetEvidence rows are reached.
-    Round-robining instead of exhausting one exercise before the next keeps every
-    exercise represented even when the total is capped; a session under budget is
-    unaffected. Each returned group becomes exactly one CANDIDATE EVIDENCE line
-    in the prompt regardless of how many sets it holds — the total real evidence
-    budget is unchanged from the flat form, only how many chunks it costs to show.
-    """
-    queues: dict[str, list[list[SetEvidence]]] = {}
-    for name, priors in selected.items():
-        instances: list[list[SetEvidence]] = []
-        for prior in priors:
-            prior_id = prior["session"].get("id")
-            if prior_id is None:
-                continue
-            rows = _set_rows(prior_id, name, prior["activity"])
-            if rows:
-                instances.append(rows)
-        if instances:
-            queues[name] = instances
-
-    groups: list[list[SetEvidence]] = []
-    total_rows = 0
-    pointers = {name: 0 for name in queues}
-    active = list(queues.keys())
-    while active and total_rows < MAX_HISTORY_EVIDENCE:
-        for name in list(active):
-            position = pointers[name]
-            if position >= len(queues[name]):
-                active.remove(name)
-                continue
-            instance = queues[name][position]
-            if groups and total_rows + len(instance) > MAX_HISTORY_EVIDENCE:
-                active.remove(name)
-                continue
-            groups.append(instance)
-            total_rows += len(instance)
-            pointers[name] = position + 1
-    return groups
+def _baseline_performance_observation(workout_id: str, name: str, activity: dict) -> Observation | None:
+    """A plain factual recap for an exercise with no comparison history — no
+    progression story is possible yet, but what was performed is still worth
+    knowing. ``None`` when the exercise offers no citable sets at all."""
+    rows = _set_rows(workout_id, name, activity)
+    if not rows:
+        return None
+    collapsed = kiln_client._collapse_sets(activity.get("performedSets") or [])
+    return Observation(
+        kind="fact",
+        confidence="firm",
+        category="performance",
+        claim=f"{name}: {collapsed}.",
+        evidence=rows,
+    )
 
 
 def _set_rows(workout_id: str, exercise: str | None, activity: dict) -> list[SetEvidence]:
@@ -366,37 +338,15 @@ def _skipped_exercises(session: dict) -> set[str]:
     }
 
 
-def _needs_extraction(name: str, activity: dict, priors: list[dict], malformed: dict[str, int]) -> bool:
-    """Whether this exercise partition needs a real extraction call, or can be
-    skipped entirely — the primary latency lever for decomposed generation
-    (#60). A per-exercise extraction call costs real GPU time regardless of how
-    many partitions run concurrently (empirically: 8 concurrent calls barely
-    beat 8 sequential ones — the local endpoint is compute-bound, not
-    round-trip-bound), so the only lever that meaningfully cuts latency is
-    processing fewer tokens in total, not rearranging the same tokens.
+def _needs_extraction(name: str, activity: dict, malformed: dict[str, int]) -> bool:
+    """Whether this exercise needs a real *qualitative* extraction call.
 
-    An exercise is skippable — genuinely has nothing to report — only when
-    ALL of: no note, not flagged skipped, not among the malformed-set exercises,
-    its own performed sets are unchanged from first to last, and (when a prior
-    exists) its last set matches the most recent prior's last set. Any one of
-    these being true means a real signal might be there, so the partition still
-    gets a full extraction call — this errs toward calling the model on
-    borderline cases rather than risking a silent miss.
+    Numeric change detection moved entirely to the deterministic Top-set delta
+    (ADR 0004), which runs unconditionally for every exercise with comparison
+    history — this now only decides whether there's something qualitative a
+    model might find: a note, an explicit skip, or malformed/dropped sets.
     """
-    if activity.get("note"):
-        return True
-    if activity.get("skipped"):
-        return True
-    if name in malformed:
-        return True
-    rows = performed_sets(activity)
-    if len(rows) >= 2 and (rows[0]["reps"] != rows[-1]["reps"] or rows[0]["load"] != rows[-1]["load"]):
-        return True
-    if priors and rows:
-        prior_rows = performed_sets(priors[0]["activity"])
-        if prior_rows and (rows[-1]["reps"] != prior_rows[-1]["reps"] or rows[-1]["load"] != prior_rows[-1]["load"]):
-            return True
-    return False
+    return bool(activity.get("note")) or bool(activity.get("skipped")) or name in malformed
 
 
 def _session_facts(workout_id: str, session: dict) -> list[Evidence]:
@@ -454,12 +404,33 @@ def _facts(workout_id: str, exercise: str | None, pairs: dict) -> list[Evidence]
     return facts
 
 
+def _candidate_evidence(session: dict) -> list[Evidence]:
+    """Build every citable prompt slot from real subject data, for extraction.
+
+    Comparison-history evidence is no longer offered here (ADR 0004):
+    extraction no longer proposes ``progression``, so it has no need to cite a
+    prior's sets — only the deterministic Top-set delta does, and it builds
+    its own evidence directly from source data, bypassing this candidate list
+    entirely. The model never emits raw evidence values — it selects from this
+    list by its 1-based position, so every cited row is real by construction.
+    """
+    workout_id = session["id"]
+    candidates: list[Evidence] = []
+    candidates.extend(_session_facts(workout_id, session))
+    for activity in session.get("activities") or []:
+        name = activity.get("name")
+        candidates.extend(_set_rows(workout_id, name, activity))
+        candidates.extend(_activity_facts(workout_id, name, activity))
+    return candidates
+
+
 # --- partitioning (#60) --------------------------------------------------
 
 
 @dataclass(frozen=True)
 class Partition:
-    """One extraction unit: a subject exercise that needs a real look.
+    """One extraction unit: a subject exercise that needs a real qualitative
+    look.
 
     ``candidate_ids`` are 1-based positions into the same shared candidate list
     ``_candidate_evidence`` builds — not a private numbering, so a citation from
@@ -473,37 +444,20 @@ class Partition:
 def partition_session(
     session: dict,
     selected: dict[str, list[dict]],
-    candidates: list[Candidate],
+    candidates: list[Evidence],
     malformed: dict[str, int],
-) -> tuple[list[Partition], list["ExtractionFinding"]]:
-    """One partition per subject exercise that needs a real look.
+) -> list[Partition]:
+    """One partition per subject exercise that needs a real qualitative look.
 
-    No session-level partition: session facts (date/type/minutes/feel) never
-    appear in any corpus case's required evidence, and live testing found
-    extracting "observations" from them anyway (e.g. "the workout was on
-    2026-07-25") produced generic, low-value findings that crowded out
-    substantive per-exercise ones during synthesis's selection — synthesis
-    still sees the session facts directly (``build_synthesis_prompt``) for
-    writing the summary, so nothing is lost.
-
-    An exercise ``_needs_extraction`` rules out gets no partition — no wasted
-    extraction call — but it is NOT simply dropped: it still gets a
-    deterministic baseline "performance" finding (``_baseline_finding``, no
-    model call) describing what was performed, citing its own real sets. Live
-    testing first tried dropping skipped exercises entirely and it broke the
-    corpus badly (``required_detail_recall`` 0.722 -> 0.4375): "nothing notable
-    happened" is not the same as "nothing worth reporting" — even an
-    unremarkable exercise's basic performance facts are exactly what
-    ``required_detail_recall`` checks for, and the one-shot design always had
-    them because it saw every exercise in one prompt. The baseline finding
-    restores that coverage without spending a model call on exercises that
-    have nothing that needs judgment.
+    Progression (the deterministic Top-set delta) and the no-history baseline
+    recap are both fully deterministic (ADR 0004) and never need a partition —
+    this only decides where a model call earns its cost: a note, an explicit
+    skip, or malformed data (``_needs_extraction``). No session-level
+    partition: session facts never appear in any corpus case's required
+    evidence.
     """
     by_exercise: dict[str, list[int]] = {}
     for index, candidate in enumerate(candidates, start=1):
-        if isinstance(candidate, list):
-            by_exercise.setdefault(candidate[0].exercise, []).append(index)
-            continue
         exercise = getattr(candidate, "exercise", None)
         if exercise is not None:
             by_exercise.setdefault(exercise, []).append(index)
@@ -511,16 +465,11 @@ def partition_session(
     activities_by_name = {a.get("name"): a for a in session.get("activities") or [] if a.get("name")}
 
     partitions: list[Partition] = []
-    baseline_findings: list[ExtractionFinding] = []
     for name in selected:  # selected preserves the subject's own exercise order
         activity = activities_by_name.get(name, {})
-        if _needs_extraction(name, activity, selected[name], malformed):
+        if _needs_extraction(name, activity, malformed):
             partitions.append(Partition(key=name, candidate_ids=tuple(by_exercise.get(name, ()))))
-        else:
-            baseline = _baseline_finding(name, activity, by_exercise.get(name, ()), candidates)
-            if baseline is not None:
-                baseline_findings.append(baseline)
-    return partitions, baseline_findings
+    return partitions
 
 
 # --- extraction -----------------------------------------------------------
@@ -537,10 +486,10 @@ class ExtractionFinding:
     """One partition's proposed observation or limitation, citing shared-pool ids.
 
     Looser than the real Observation/Limitation contract types — extraction can
-    propose as many findings as it finds and can be wrong; synthesis (via the
-    existing ``_resolve_evidence``/``Grounding``/vocabulary checks) is where
-    invalid citations and out-of-vocabulary values get dropped and the real,
-    validated contract objects get built.
+    propose as many findings as it finds and can be wrong; decoding (via
+    ``_resolve_evidence``/``Grounding``/vocabulary checks) is where invalid
+    citations and out-of-vocabulary values get dropped and the real, validated
+    contract objects get built.
     """
 
     partition_key: str
@@ -554,77 +503,48 @@ class ExtractionFinding:
     limitation_detail: str | None = None
 
 
-def _baseline_finding(
-    name: str, activity: dict, candidate_ids: list[int], candidates: list[Candidate]
-) -> ExtractionFinding | None:
-    """A deterministic 'performance' finding for an exercise ``_needs_extraction``
-    skipped — no model call, just a plain factual recap citing every one of the
-    exercise's own performed-set candidates. ``None`` when the exercise offers
-    no citable sets at all (e.g. a freeform activity with no ``performedSets``).
-    """
-    set_ids = [i for i in candidate_ids if isinstance(candidates[i - 1], SetEvidence)]
-    if not set_ids:
-        return None
-    collapsed = kiln_client._collapse_sets(activity.get("performedSets") or [])
-    return ExtractionFinding(
-        partition_key=name,
-        finding_kind="observation",
-        category="performance",
-        observation_kind="fact",
-        confidence="firm",
-        claim=f"{name}: {collapsed}.",
-        evidence_ids=tuple(set_ids),
-    )
-
-
 _EXTRACTION_INSTRUCTIONS = (
     "You are reviewing ONE exercise from a workout session in isolation. List every "
-    "fact worth noting about ONLY the evidence below; do not worry about picking the "
-    "'best' ones or staying under any limit — a later step selects among every "
-    "exercise's findings together.\n"
+    "qualitative fact worth noting about ONLY the evidence below; do not worry about "
+    "picking the 'best' ones or staying under any limit.\n"
     "Rules:\n"
     "- Cite evidence ONLY by the integer ids listed under EVIDENCE. Never invent sets, "
     "numbers, or facts.\n"
-    "- Use category 'progression' ONLY when COMPARISON HISTORY is shown below, and cite "
-    "at least one of its sets for it.\n"
+    "- NEVER use category 'progression' — cross-session comparison is computed "
+    "separately from real data, not your job here.\n"
     "- Only add a 'limitation' when this prompt EXPLICITLY tells you to below (a DATA "
     "QUALITY NOTE naming a required kind) — never infer a data-quality problem on your "
     "own judgment (e.g. from a note's tone or wording). Most exercises have no "
     "limitation at all; that is the normal, expected case, not a gap to fill.\n"
     "Output JSON shape:\n"
     '{"observations": [{"kind": "fact"|"inference", "confidence": "firm"|"tentative",'
-    ' "category": "performance"|"progression"|"adherence"|"data_quality",'
+    ' "category": "performance"|"adherence"|"data_quality",'
     ' "claim": str, "evidence_ids": [int, ...]}],'
     ' "limitations": [{"kind": "missing_data"|"malformed_data",'
     ' "detail": str}]}'
 )
 
 
-def _render_candidate(candidate: Candidate) -> str:
-    """Render one EVIDENCE line: a single row, or a whole grouped instance."""
-    if isinstance(candidate, list):
-        first = candidate[0]
-        return json.dumps(
-            {
-                "kind": "history_sets",
-                "workout_id": first.workout_id,
-                "exercise": first.exercise,
-                "sets": [{"reps": row.reps, "load": row.load, "loadType": row.loadType} for row in candidate],
-            }
-        )
-    return json.dumps(candidate.model_dump())
-
-
 def build_extraction_prompt(
     partition: Partition,
-    candidates: list[Candidate],
+    candidates: list[Evidence],
     selected: dict[str, list[dict]],
     malformed: dict[str, int],
     skipped: set[str],
 ) -> str:
-    """One partition's whole prompt: its comparison history, any deterministic
-    DATA QUALITY NOTE (malformed/skipped) the model must react to, and its own
-    slice of the shared candidate pool."""
+    """One partition's whole prompt: its comparison history (context only —
+    extraction is barred from proposing 'progression' from it, ADR 0004), any
+    deterministic DATA QUALITY NOTE (malformed/skipped) the model must react
+    to, plus its own slice of the shared candidate pool.
+
+    Comparison history was cut from this prompt once progression moved to the
+    deterministic Top-set delta, on the assumption extraction had no more use
+    for it — reverted after a live A/B showed a real, reproducible regression:
+    without it, the model started calling malformed data 'missing_data'
+    instead of 'malformed_data' on c11 (4/4 repeated calls, not a flake). The
+    history evidently still helps the model's general judgment, not just
+    progression-finding.
+    """
     lines: list[str] = [_EXTRACTION_INSTRUCTIONS, "", f"PARTITION: {partition.key}", ""]
     priors = selected.get(partition.key) or []
     if priors:
@@ -635,7 +555,7 @@ def build_extraction_prompt(
             }
             for prior in priors
         ]
-        lines.append(f"COMPARISON HISTORY (newest first): {json.dumps(summary)}")
+        lines.append(f"COMPARISON HISTORY (newest first, context only — do not use category 'progression'): {json.dumps(summary)}")
     dropped = malformed.get(partition.key)
     if dropped:
         plural = "s" if dropped != 1 else ""
@@ -652,7 +572,7 @@ def build_extraction_prompt(
     lines.append("")
     lines.append("EVIDENCE (id: row):")
     for index in partition.candidate_ids:
-        lines.append(f"{index}: {_render_candidate(candidates[index - 1])}")
+        lines.append(f"{index}: {json.dumps(candidates[index - 1].model_dump())}")
     lines.append("")
     lines.append("Return only the JSON object.")
     return "\n".join(lines)
@@ -660,7 +580,7 @@ def build_extraction_prompt(
 
 def extract(
     partition: Partition,
-    candidates: list[Candidate],
+    candidates: list[Evidence],
     selected: dict[str, list[dict]],
     malformed: dict[str, int],
     skipped: set[str],
@@ -710,91 +630,26 @@ def _parsed_findings(raw_items: object, build: Callable[[dict], ExtractionFindin
     return [build(item) for item in raw_items if isinstance(item, dict)]
 
 
-# --- synthesis --------------------------------------------------------------
+# --- decode extraction findings into the contract (ADR 0004) --------------
 
 
-_SYNTHESIS_INSTRUCTIONS = (
-    "Below are candidate observations extracted independently per exercise/session-facts, "
-    "each already citing real evidence ids. Select the best at most 3 (prefer variety across "
-    "categories and exercises over redundancy) and write a short factual summary of the whole "
-    "session.\n"
-    "Output JSON shape:\n"
-    '{"summary": str, "selected_observation_indexes": [int, ...]}\n'
-    "selected_observation_indexes are 1-based positions into the OBSERVATION FINDINGS list below."
-)
-
-
-def build_synthesis_prompt(session: dict, observation_findings: list[ExtractionFinding]) -> str:
-    """The one synthesis prompt: session facts (for the summary line) plus every
-    extracted observation finding, numbered for the model to select among."""
-    lines: list[str] = [_SYNTHESIS_INSTRUCTIONS, "", "SUBJECT SESSION:"]
-    lines.append(
-        json.dumps(
-            {
-                "date": (session.get("date") or "")[:10],
-                "workout": session.get("workoutName"),
-                "type": session.get("type"),
-                "minutes": session.get("minutes"),
-                "feel": session.get("feel"),
-            }
-        )
-    )
-    lines.append("")
-    lines.append("OBSERVATION FINDINGS:")
-    for index, finding in enumerate(observation_findings, start=1):
-        lines.append(f"{index}: [{finding.partition_key}] {finding.category} | {finding.claim}")
-    lines.append("")
-    lines.append("Return only the JSON object.")
-    return "\n".join(lines)
-
-
-def synthesize(
-    session: dict,
-    findings: list[ExtractionFinding],
-    candidates: list[Candidate],
-    selected: dict[str, list[dict]],
-    grounding: Grounding,
-    history_limits: list[Limitation],
-    model: ModelConnection,
-    complete: Complete,
-) -> WorkoutReview:
-    """Select among extraction findings and write the final review.
-
-    Selected observations' ``evidence_ids`` resolve through the same,
-    unmodified ``_resolve_evidence``/``Grounding`` extraction candidates ground
-    against — decomposition adds no new grounding code. Any failure to reach or
-    parse the model degrades to a factual, claim-free review, same as before.
+def _decode_extraction_observations(
+    findings: list[ExtractionFinding], candidates: list[Evidence], grounding: Grounding
+) -> list[Observation]:
+    """Validate and include every extraction-proposed observation — no
+    selection, no cap (ADR 0004): a model-found qualitative finding is kept
+    whenever it's schema-valid and every cited row grounds. ``progression`` is
+    rejected here too, as a decode-time backstop to the prompt instruction —
+    that comparison is deterministic-only now, never trust the model not to
+    try anyway.
     """
-    workout_id = session["id"]
-    prior_ids = {prior["session"].get("id") for priors in selected.values() for prior in priors}
-    observation_findings = [f for f in findings if f.finding_kind == "observation"]
-    limitation_findings = [f for f in findings if f.finding_kind == "limitation"]
-
-    summary = ""
-    selected_indexes: list[int] = []
-    if observation_findings:
-        prompt = build_synthesis_prompt(session, observation_findings)
-        try:
-            parsed = _extract_json(complete(model, prompt))
-        except Exception:  # noqa: BLE001
-            parsed = None
-        if isinstance(parsed, dict):
-            summary = parsed.get("summary") if isinstance(parsed.get("summary"), str) else ""
-            selected_indexes = [
-                i
-                for i in parsed.get("selected_observation_indexes", [])
-                if isinstance(i, int) and not isinstance(i, bool)
-            ]
-
     observations: list[Observation] = []
-    seen_indexes: set[int] = set()
-    for index in selected_indexes:
-        if index in seen_indexes or not (1 <= index <= len(observation_findings)):
+    for finding in findings:
+        if finding.finding_kind != "observation":
             continue
-        seen_indexes.add(index)
-        finding = observation_findings[index - 1]
         if (
             finding.category not in _CATEGORIES
+            or finding.category == "progression"
             or finding.observation_kind not in _KINDS
             or finding.confidence not in _CONFIDENCES
             or not isinstance(finding.claim, str)
@@ -803,8 +658,6 @@ def synthesize(
             continue
         evidence = _resolve_evidence(list(finding.evidence_ids), candidates, grounding)
         if not evidence:
-            continue
-        if finding.category == "progression" and not _cites_prior_set(evidence, prior_ids):
             continue
         try:
             observations.append(
@@ -818,21 +671,7 @@ def synthesize(
             )
         except Exception:  # noqa: BLE001 — drop a finding the contract rejects.
             continue
-        if len(observations) == 3:
-            break
-
-    model_limits = _decode_limitations(
-        [{"kind": f.limitation_kind, "detail": f.limitation_detail} for f in limitation_findings]
-    )
-
-    if not summary:
-        summary = _factual_summary(session)
-
-    limitations = _dedupe_limitations(history_limits + model_limits)
-    return WorkoutReview(workout_id=workout_id, summary=summary, observations=observations, limitations=limitations)
-
-
-# --- decode / ground ----------------------------------------------------
+    return observations
 
 
 def _extract_json(raw: str) -> dict | None:
@@ -853,9 +692,7 @@ def _extract_json(raw: str) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _resolve_evidence(
-    raw_ids: object, candidates: list[Candidate], grounding: Grounding
-) -> list[Evidence]:
+def _resolve_evidence(raw_ids: object, candidates: list[Evidence], grounding: Grounding) -> list[Evidence]:
     if not isinstance(raw_ids, list):
         return []
     resolved: list[Evidence] = []
@@ -866,17 +703,11 @@ def _resolve_evidence(
         index = raw_id - 1  # ids are 1-based in the prompt.
         if 0 <= index < len(candidates) and index not in seen:
             candidate = candidates[index]
-            rows = candidate if isinstance(candidate, list) else [candidate]
-            if not all(grounding.resolves(row) for row in rows):
-                continue  # guard: never surface a group with any row that doesn't ground verbatim.
+            if not grounding.resolves(candidate):
+                continue  # guard: never surface a row that doesn't ground verbatim.
             seen.add(index)
-            resolved.extend(rows)
+            resolved.append(candidate)
     return resolved
-
-
-def _cites_prior_set(evidence: list[Evidence], prior_ids: set) -> bool:
-    """True when some cited row is a performed set from a prior (history) Session."""
-    return any(isinstance(row, SetEvidence) and row.workout_id in prior_ids for row in evidence)
 
 
 def _decode_limitations(raw_limitations: object) -> list[Limitation]:
@@ -903,22 +734,6 @@ def _dedupe_limitations(limitations: list[Limitation]) -> list[Limitation]:
             seen.add(key)
             unique.append(limitation)
     return unique
-
-
-def _factual_summary(session: dict) -> str:
-    """A deterministic factual recap, used when the model supplies no summary."""
-    activities = session.get("activities") or []
-    performed = [a for a in activities if a.get("performedSets")]
-    parts = [session.get("workoutName") or "Session"]
-    date = (session.get("date") or "")[:10]
-    if date:
-        parts.append(f"on {date}")
-    tail = [f"{len(performed)} exercise{'s' if len(performed) != 1 else ''} performed"]
-    if session.get("minutes") is not None:
-        tail.append(f"{session['minutes']} min")
-    if session.get("feel"):
-        tail.append(f"felt {session['feel']}")
-    return f"{' '.join(parts)}: {', '.join(tail)}."
 
 
 # --- default model seam -------------------------------------------------

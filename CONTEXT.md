@@ -86,14 +86,14 @@ _Avoid_: verification outcome, pass/fail, quality
 
 ## Workout Review
 
-The evidence-backed review capability over Kiln training history: `review_workout(workout_id) -> WorkoutReview`. Its output contract is Pydantic v2 models in `stengents/workout_review`; the contract is pure content, so model, latency, cost, and version live in the run record / agent logs, never inside the review. Locked in #17.
+The evidence-backed review capability over Kiln training history: `review_workout(workout_id) -> WorkoutReview`. Its output contract is Pydantic v2 models in `stengents/workout_review`; the contract is pure content, so model, latency, cost, and version live in the run record / agent logs, never inside the review. Locked in #17; amended by ADR 0004 (observation cap and `summary` removed, progression made deterministic).
 
 **Workout Review**:
-A concise, evidence-backed review of one finished Kiln Session: a factual summary, at most three Observations, and any acknowledged Limitations. Callable independently of chat as `review_workout(workout_id)`. It reviews a *performed* Session, not an assigned Kiln Workout.
+An evidence-backed review of one finished Kiln Session: a per-exercise progression Observation for every exercise touched, an accountability Observation when a Plan streak is active, and any acknowledged Limitations. Callable independently of chat as `review_workout(workout_id)`. It reviews a *performed* Session, not an assigned Kiln Workout. See ADR 0004.
 _Avoid_: summary, coaching, feedback
 
 **WorkoutReview**:
-The output object: `workout_id`, a factual `summary`, `observations` (0–3, hard-capped in the schema), and `limitations`. A pure content object — carries no model, latency, cost, or version.
+The output object: `workout_id`, `observations` (uncapped — one per exercise touched, plus a streak Observation when active; the schema's old 0–3 cap was removed, ADR 0004), and `limitations`. No `summary` field — dropped as unused filler once nothing rendered it. A pure content object — carries no model, latency, cost, or version.
 _Avoid_: report, result, response
 
 **Observation**:
@@ -109,8 +109,16 @@ A structured acknowledgement of a gap rather than a guess: `kind` (`insufficient
 _Avoid_: caveat, disclaimer, warning, note
 
 **Comparison history**:
-The prior Sessions a review compares against, selected **deterministically and per exercise** (not per workout — workout names don't recur, exercises do). Decided in #19. For each exercise in the subject Session that carries `performedSets`, its comparison history is the finished Sessions strictly earlier by `date` that performed an activity of the **exact same name** *with* non-empty `performedSets`, ordered newest-first, capped at the **10** most recent. Only `progression` Observations consume it. An exercise with **zero** prior instances has *insufficient history* — no comparison is made and the gap is acknowledged with `Limitation(insufficient_history)`; one or more permits a comparison. The `performedSets` filter excludes the pre-2026-07-20 freeform Sessions automatically, so they age out of comparison as structured logging accumulates.
+The prior Sessions a review compares against, selected **deterministically and per exercise** (not per workout — workout names don't recur, exercises do). Decided in #19. For each exercise in the subject Session that carries `performedSets`, its comparison history is the finished Sessions strictly earlier by `date` that performed an activity of the **exact same name** *with* non-empty `performedSets`, ordered newest-first, capped at the **10** most recent. An exercise with **zero** prior instances has *insufficient history* — no comparison is made and the gap is acknowledged with `Limitation(insufficient_history)`; one or more permits a comparison. The `performedSets` filter excludes the pre-2026-07-20 freeform Sessions automatically, so they age out of comparison as structured logging accumulates. As of ADR 0004, a **Top-set delta** only ever needs the single newest entry of this history — whether the fuller 10-deep list still has a consumer is an open implementation question, not settled by this glossary.
 _Avoid_: lookback, context window, retrieval
+
+**Top-set delta**:
+A deterministic, per-exercise progression comparison (ADR 0004): the subject Session's **top set** for an exercise (the performed set with the highest `load`, ties broken by more `reps`) against the top set of that exercise's single most recent prior Session (the newest entry of its Comparison history). Reports the first of `load`, then set count, then `reps` that differs between the two top sets; an exact match on all three is itself reported as **held steady**, not silence. Computed in code, never inferred by the model — the model's only role is phrasing the computed result into one sentence. Feeds a `progression`-category, `fact`-kind Observation.
+_Avoid_: trend, comparison, improvement
+
+**Plan streak**:
+The count of consecutive, fully-elapsed calendar weeks, ending with the most recent one to finish, in which every non-rest scheduled Workout in that week's Kiln Plan had at least one finished Session — abandoned Sessions don't count and there's no day-level deadline within the week, matching Kiln's own `doneWorkoutNames` semantics. A week with no active Plan breaks the streak. The current, still-in-progress week is excluded from the count either way until it ends. A nonzero streak feeds an `adherence`-category Observation.
+_Avoid_: weekly count, consistency score, adherence rate
 
 **Benchmark corpus**:
 The versioned set of hybrid cases the review is scored against. Decided in #20; lives at `src/stengents/workout_review/benchmark/`, one directory per case (`benchmark/<case-id>/`), sibling-in-spirit to `src/stengents/fixtures/`. Each case is two JSON files. **`input.json`** is a self-contained, frozen bundle of **raw Kiln Session JSON** (the shape `kiln_client.fetch_sessions`/`fetch_workout` return): the subject Session plus a pool of prior Sessions. The evaluator runs the *real* `performed_sets` extraction and the #19 history-selection rule against it, so the corpus exercises the whole pipeline, not just generation; hard scenarios are authored by hand-editing Kiln-shaped JSON. **`expectations.json`** holds the structured assertions: `subject_workout_id`, `required_evidence` (Evidence rows that must all be cited somewhere), `required_limitations` (`{kind, exercise}` that must appear), and `forbidden_observations` (`{category, exercise, why}` — a **blacklist**, not a whitelist; anything grounded and not forbidden is acceptable). All matching is on structured fields only — an observation's exercise is *derived* from its Evidence, and the free-text `claim` prose is deferred to the later LLM rubric.
