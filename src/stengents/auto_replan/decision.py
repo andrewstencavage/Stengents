@@ -390,13 +390,34 @@ def _sets_differ(current: list[PrescribedSet], performed: list[PrescribedSet]) -
 
 
 def sync_template_update(
-    template: dict, actual_workout: DraftWorkout, subject: dict
+    template: dict,
+    workouts_by_weekday: dict[Weekday, DraftWorkout],
+    actual_workout: DraftWorkout,
+    subject: dict,
 ) -> TemplateUpdate | None:
     """Propose a revised template content upsert when what was actually
     performed on ``actual_workout`` differs from the template's current
     prescribed sets for that exercise (matching by ``exerciseId`` == the
     performed activity's display ``name`` — see :mod:`.contract`'s documented
     assumption). ``None`` when nothing differs or nothing matches.
+
+    ``workouts_by_weekday`` must be the *already-reordered* mapping
+    (:func:`decide_auto_replan`'s local ``by_weekday``, post-:func:`reorder_week`
+    when a reorder applied) — the same one :func:`build_draft` used — never a
+    fresh :func:`template_workouts_by_weekday` re-derived from the pristine
+    ``template``. Re-deriving fresh was this function's original bug: on a
+    Session performed on a different weekday than scheduled, ``actual_workout``
+    is already reassigned to its new weekday (by :func:`reorder_week`), but a
+    freshly re-derived map still has the *original* template's workout sitting
+    at the *old* scheduled weekday too — carrying the exact same Activity
+    ``id``s. Splicing the freshness-synced ``actual_workout`` into that stale
+    map at its new weekday leaves both the old and new slots holding an
+    Activity with the same ``id``, an invalid Plan Template
+    ``create_plan_template`` rejects outright ("activity identifiers must be
+    unique") — reproduced against a live Kiln instance (issue #66's mandatory
+    day-reorder verification) before this fix. Building on the already-reordered
+    mapping instead means the old scheduled slot is already correctly resting
+    and every Activity id already appears exactly once.
     """
     performed_by_name = {a.get("name"): a for a in subject.get("activities") or [] if a.get("name")}
     updated_activities: list[DraftActivity] = []
@@ -418,7 +439,7 @@ def sync_template_update(
         return None
 
     updated_workout = actual_workout.model_copy(update={"activities": updated_activities})
-    by_weekday = template_workouts_by_weekday(template)
+    by_weekday = dict(workouts_by_weekday)
     by_weekday[actual_workout.weekday] = updated_workout
     content = PlanTemplateContent(
         name=template["name"],
@@ -486,7 +507,7 @@ def decide_auto_replan(
     template_updates: list[TemplateUpdate] = []
     actual_workout = by_weekday.get(actual_weekday)
     if actual_workout is not None:
-        update = sync_template_update(template, actual_workout, subject)
+        update = sync_template_update(template, by_weekday, actual_workout, subject)
         if update is not None:
             template_updates.append(update)
 

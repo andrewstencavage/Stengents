@@ -372,6 +372,46 @@ def test_out_of_order_session_reorders_remaining_week() -> None:
     assert workouts["Wednesday"].name == "Push Day"
 
 
+def test_reorder_and_freshness_sync_together_never_duplicate_an_activity_id() -> None:
+    """Regression (issue #66, found live against a real Kiln instance):
+    ``sync_template_update`` used to re-derive a *fresh* weekday map straight
+    from the pristine, unreordered template, then splice the freshness-synced
+    (already-reassigned-weekday) ``actual_workout`` into it — leaving the same
+    Activity `id` sitting at both its original scheduled weekday (still
+    holding the template's untouched, pre-reorder copy) and its new actual
+    weekday. Kiln's real `create_plan_template` rejects that outright
+    ("activity identifiers must be unique"). A reorder plus a genuine
+    performed-set drift on the very same Session is exactly the day-reorder
+    scenario issue #66's acceptance criteria call out.
+    """
+    sessions = [
+        # "Push Day" (scheduled Wednesday) performed on Friday instead --
+        # triggers reorder_week's cascade -- AND heavier than prescribed,
+        # so sync_template_update also proposes a freshness update for it.
+        _session(
+            "s1",
+            "2026-07-31T10:00:00.000Z",  # a Friday
+            "Push Day",
+            [_activity("Bench Press", [(8, 4, "plate"), (8, 4, "plate")])],  # template has value=3
+        )
+    ]
+
+    decision = decide_auto_replan(DEFAULT_STRATEGY, [STRENGTH_TEMPLATE, DELOAD_TEMPLATE], sessions)
+
+    assert len(decision.template_updates) == 1
+    updated_template = decision.template_updates[0].template
+    all_activity_ids = [
+        activity.id for workout in updated_template.workouts for activity in workout.activities
+    ]
+    assert len(all_activity_ids) == len(set(all_activity_ids)), f"duplicate activity ids: {all_activity_ids}"
+    # And the synced content actually landed on Friday, not stale-Wednesday.
+    by_weekday = {w.weekday: w for w in updated_template.workouts}
+    assert by_weekday["Wednesday"].name == "Rest"
+    assert by_weekday["Friday"].name == "Push Day"
+    bench = next(a for a in by_weekday["Friday"].activities if a.exerciseId == "Bench Press")
+    assert all(s.value == 4 for s in bench.prescribedSets)
+
+
 def test_session_performed_early_swaps_the_two_days() -> None:
     # "Pull Day" is scheduled for Thursday but performed a day early, on Wednesday.
     sessions = [_session("s1", "2026-07-29T10:00:00.000Z", "Pull Day", [_activity("Barbell Row", [(8, 3, "plate")])])]

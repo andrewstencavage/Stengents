@@ -327,6 +327,41 @@ def list_plan_templates(*, connect: Connect = connect, timeout: float = DEFAULT_
     return result.get("templates") or []
 
 
+# --- public writes: the planning boundary's three write tools (#66) -------
+#
+# Laid down for Auto-replan's adapter (issue #66), following the exact same
+# stdio pattern as every read above — one `connect()`, one `tools/call`, one
+# teardown. Each takes already-serialized Kiln JSON (typically produced by
+# `stengents.auto_replan.contract.to_kiln_json`) and passes it through
+# verbatim as the tool's `arguments`, since Kiln's own zod schemas (not this
+# client) are the single source of truth for what's valid.
+
+
+def create_plan_template(content: dict, *, connect: Connect = connect, timeout: float = DEFAULT_TIMEOUT) -> dict:
+    """Upsert one Plan Template via MCP's `create_plan_template` (keyed by
+    ``content["name"]`` — calling again with an existing name replaces its
+    content rather than duplicating it). Returns the stored template (Kiln's
+    display shape, not the input shape) or ``{}`` if the tool responded with
+    no ``template``."""
+    result = _call("create_plan_template", content, connect=connect, timeout=timeout)
+    return result.get("template") or {}
+
+
+def create_plan_draft(content: dict, *, connect: Connect = connect, timeout: float = DEFAULT_TIMEOUT) -> dict:
+    """Create one draft Plan via MCP's `create_plan_draft`. Draft only — this
+    never activates or replaces the current Plan; call `select_current_plan`
+    separately (with the returned Plan's ``planId``) to do that."""
+    result = _call("create_plan_draft", content, connect=connect, timeout=timeout)
+    return result.get("plan") or {}
+
+
+def select_current_plan(plan_id: str, *, connect: Connect = connect, timeout: float = DEFAULT_TIMEOUT) -> dict:
+    """Activate one existing Plan (typically a just-created draft) via MCP's
+    `select_current_plan`, by its ``planId``."""
+    result = _call("select_current_plan", {"planId": plan_id}, connect=connect, timeout=timeout)
+    return result.get("plan") or {}
+
+
 # --- kiln_client-compatible seams for review_workout -----------------------
 #
 # review_workout's fetch/fetch_history/fetch_plans seams were written against

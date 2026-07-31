@@ -304,6 +304,44 @@ def test_list_plan_templates_is_empty_list_not_none_when_kiln_has_none() -> None
     assert kiln_mcp_client.list_plan_templates(connect=_fake_connect(fake)) == []
 
 
+# --- writes: create_plan_template / create_plan_draft / select_current_plan (#66) --
+
+
+def test_create_plan_template_passes_content_through_and_returns_the_stored_template() -> None:
+    fake = _FakeConnection({"create_plan_template": {"template": {"name": "strength", "category": "strength"}}})
+    content = {"schemaVersion": 1, "name": "strength", "category": "strength", "weekFocus": "Base", "workouts": []}
+
+    result = kiln_mcp_client.create_plan_template(content, connect=_fake_connect(fake))
+
+    assert result == {"name": "strength", "category": "strength"}
+    assert fake.calls == [("create_plan_template", content)]
+
+
+def test_create_plan_template_returns_empty_dict_when_the_tool_has_nothing_to_report() -> None:
+    fake = _FakeConnection({"create_plan_template": {}})
+
+    assert kiln_mcp_client.create_plan_template({"name": "x"}, connect=_fake_connect(fake)) == {}
+
+
+def test_create_plan_draft_passes_content_through_and_returns_the_created_plan() -> None:
+    fake = _FakeConnection({"create_plan_draft": {"plan": {"planId": "p1", "weekFocus": "Base"}}})
+    content = {"schemaVersion": 1, "weekStart": "2026-08-03", "weekFocus": "Base", "workouts": []}
+
+    result = kiln_mcp_client.create_plan_draft(content, connect=_fake_connect(fake))
+
+    assert result == {"planId": "p1", "weekFocus": "Base"}
+    assert fake.calls == [("create_plan_draft", content)]
+
+
+def test_select_current_plan_sends_the_plan_id_and_returns_the_activated_plan() -> None:
+    fake = _FakeConnection({"select_current_plan": {"plan": {"planId": "p1", "weekFocus": "Base"}}})
+
+    result = kiln_mcp_client.select_current_plan("p1", connect=_fake_connect(fake))
+
+    assert result == {"planId": "p1", "weekFocus": "Base"}
+    assert fake.calls == [("select_current_plan", {"planId": "p1"})]
+
+
 # --- connect(): requires KILN_MCP_CWD ------------------------------------
 
 
