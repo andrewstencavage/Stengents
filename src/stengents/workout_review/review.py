@@ -1,9 +1,17 @@
 """The stable Workout Review entry point: ``review_workout(workout_id)``.
 
 Independent of the ``kiln_coach`` chat agent. It reads one finished Session by
-its stable id from ``kiln_client``, selects each performed exercise's comparison
-history (#19), resolves the development-time model from ``model_source``, and
-assembles an evidence-backed review — decoded strictly into the #17 contract.
+its stable id — via the injected ``fetch``/``fetch_history``/``fetch_plans``
+seams below, defaulting to ``kiln_client``'s HTTP fetchers — selects each
+performed exercise's comparison history (#19), resolves the development-time
+model from ``model_source``, and assembles an evidence-backed review — decoded
+strictly into the #17 contract.
+
+ADR-0005: the coach server (``stengents serve-coach``) wires these seams to
+``kiln_mcp_client``'s MCP-backed fetchers instead (see ``cli.py``), so this
+module's HTTP defaults are only reached by a caller that doesn't override
+them. Either transport returns the same dict shape, so nothing else here
+changes with the transport.
 
 As of ADR 0004, generation has two independent tracks, both feeding the same
 uncapped ``observations`` list with no model call selecting among them:
