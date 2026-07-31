@@ -1,0 +1,82 @@
+{
+  "strategy": {
+    "version": 1,
+    "created": "2026-07-01T00:00:00.000Z",
+    "markdown": "# Strategy\n\nUse the travel template whenever I note I'm traveling.\n\n```replan-rules\ndefault: strength\nkeyword: travel\nkeyword_template: travel\n```\n"
+  },
+  "templates": [
+    {
+      "schemaVersion": 1,
+      "name": "strength",
+      "category": "strength",
+      "weekFocus": "Base strength",
+      "workouts": [
+        {
+          "weekday": "Monday",
+          "name": "Squat Day",
+          "type": "strength",
+          "activities": [
+            {
+              "id": "a1",
+              "exerciseId": "Back Squat",
+              "restSeconds": 90,
+              "prescribedSets": [{"id": "s1", "reps": 5, "value": 5, "unit": "plate"}]
+            }
+          ]
+        },
+        {"weekday": "Tuesday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Wednesday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Thursday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Friday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Saturday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Sunday", "name": "Rest", "type": "rest", "activities": []}
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "name": "travel",
+      "category": "travel",
+      "weekFocus": "Bodyweight travel week",
+      "workouts": [
+        {
+          "weekday": "Monday",
+          "name": "Hotel Bodyweight Circuit",
+          "type": "strength",
+          "activities": [
+            {
+              "id": "a1",
+              "exerciseId": "Push-Up",
+              "restSeconds": 45,
+              "prescribedSets": [{"id": "s1", "reps": 20}]
+            }
+          ]
+        },
+        {"weekday": "Tuesday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Wednesday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Thursday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Friday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Saturday", "name": "Rest", "type": "rest", "activities": []},
+        {"weekday": "Sunday", "name": "Rest", "type": "rest", "activities": []}
+      ]
+    }
+  ],
+  "sessions": [
+    {
+      "id": "9f5e5f2a-0000-0000-0000-000000000030",
+      "status": "finished",
+      "date": "2026-07-27T10:00:00.000Z",
+      "workoutName": "Squat Day",
+      "type": "strength",
+      "minutes": 20,
+      "feel": "right",
+      "activities": [
+        {
+          "name": "Back Squat",
+          "note": "Traveling for work this week, no rack available.",
+          "plannedActivity": {"prescribedSets": [0]},
+          "performedSets": [{"reps": 5, "measurement": {"value": 5, "unit": "plate"}}]
+        }
+      ]
+    }
+  ]
+}
