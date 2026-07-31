@@ -1,5 +1,7 @@
 # Kiln Coach reads Kiln over its LAN HTTP API, not MCP
 
+Status: superseded by 0005-kiln-coach-moves-to-mcp.md
+
 The `kiln_coach` farm-system agent reads training history from the Kiln
 instance on the home-gym box. We access Kiln's browser HTTP API directly
 (`GET http://<gym>:4173/api/sessions`) rather than Kiln's stdio MCP boundary,
