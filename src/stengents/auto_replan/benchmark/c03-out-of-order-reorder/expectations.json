@@ -1,0 +1,14 @@
+{
+  "expected_template": "strength",
+  "expected_activate": true,
+  "expected_week_start": "2026-07-27",
+  "expected_weekdays": [
+    {"weekday": "Monday", "name": "Squat Day", "type": "strength"},
+    {"weekday": "Wednesday", "name": "Push Day", "type": "strength"},
+    {"weekday": "Thursday", "name": "Rest", "type": "rest"},
+    {"weekday": "Friday", "name": "Pull Day", "type": "strength"},
+    {"weekday": "Saturday", "name": "Leg Day", "type": "strength"},
+    {"weekday": "Sunday", "name": "Rest", "type": "rest"}
+  ],
+  "expects_template_update": false
+}

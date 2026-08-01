@@ -1,0 +1,10 @@
+{
+  "expected_template": "deload",
+  "expected_activate": true,
+  "expected_week_start": "2026-07-20",
+  "expected_weekdays": [
+    {"weekday": "Monday", "name": "Light Squat Day", "type": "strength"},
+    {"weekday": "Tuesday", "name": "Rest", "type": "rest"}
+  ],
+  "expects_template_update": false
+}

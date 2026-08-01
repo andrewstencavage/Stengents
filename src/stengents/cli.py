@@ -115,6 +115,8 @@ def _review_benchmark_command(model_override: str | None, write_baseline_flag: b
 
 def _serve_coach_command(model_override: str | None, port_override: int | None) -> int:
     # Deferred imports: this path pulls in pydantic/litellm, which `run` doesn't need.
+    from .auto_replan.kiln_adapter import run_auto_replan
+    from .workout_review import kiln_mcp_client
     from .workout_review.review import DEFAULT_MODEL_NAME, review_workout
     from .workout_review.server import serve
 
@@ -128,15 +130,46 @@ def _serve_coach_command(model_override: str | None, port_override: int | None) 
         print(f"preflight failed: {error}; endpoint={connection.base_url}; model={connection.name}", file=sys.stderr)
         return 2
 
+    # ADR-0005: the coach server reads Kiln over MCP, not kiln_client's HTTP
+    # API — kiln_coach's chat LlmAgent keeps that HTTP path untouched.
     def review(workout_id: str):
-        return review_workout(workout_id, model=connection)
+        return review_workout(
+            workout_id,
+            fetch=kiln_mcp_client.fetch_workout,
+            fetch_history=kiln_mcp_client.fetch_sessions,
+            fetch_plans=kiln_mcp_client.fetch_plans,
+            model=connection,
+        )
+
+    # Issue #66: Auto-replan runs alongside the review inside the same
+    # post-Session hook (`server.py`'s `do_GET`), best-effort — a failed or
+    # errored run is caught and logged there, never raised back through here.
+    # A successful run's own `ReplanDecision.reason` (and each template
+    # update's `reason`) is printed here as Auto-replan's whole "light-touch
+    # audit trail" (ADR-0002, kiln): Kiln's write schemas have no field to
+    # carry that reasoning into the Plan/Template themselves, so a server log
+    # line is the only place a captain (or a developer) can see *why* a given
+    # write happened, short of reading Kiln's Plan history diff by eye.
+    def auto_replan(workout_id: str) -> None:
+        decision = run_auto_replan(workout_id)
+        print(
+            json.dumps(
+                {
+                    "auto_replan": workout_id,
+                    "selected_template": decision.selected_template,
+                    "activate": decision.activate,
+                    "template_updates": [u.reason for u in decision.template_updates],
+                    "reason": decision.reason,
+                }
+            )
+        )
 
     # Defaults to every interface, not just loopback: Kiln reaches this from a
     # separate host (or a separate Docker network namespace), the same LAN-trust
     # boundary Kiln's own KILN_HOST=0.0.0.0 default already assumes. Override
     # with STENGENTS_COACH_HOST for a loopback-only run.
     host = os.environ.get("STENGENTS_COACH_HOST", "0.0.0.0")
-    server = serve(host=host, port=port_override or 8787, review_workout=review)
+    server = serve(host=host, port=port_override or 8787, review_workout=review, auto_replan=auto_replan)
     host, port = server.server_address
     print(json.dumps({"host": host, "port": port, "model": connection.as_record()}))
     try:

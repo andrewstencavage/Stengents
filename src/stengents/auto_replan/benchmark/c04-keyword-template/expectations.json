@@ -1,0 +1,9 @@
+{
+  "expected_template": "travel",
+  "expected_activate": true,
+  "expected_week_start": "2026-07-27",
+  "expected_weekdays": [
+    {"weekday": "Monday", "name": "Hotel Bodyweight Circuit", "type": "strength"}
+  ],
+  "expects_template_update": false
+}
