@@ -130,23 +130,23 @@ def test_write_baseline_lands_at_self_identifying_path(tmp_path) -> None:
 
 
 def test_parse_recognizes_write_baseline_flag() -> None:
-    positional, model_override, write_baseline_flag, port_override = cli._parse(["review-benchmark", "--write-baseline"])
+    positional, model_override, write_baseline_flag, port_override, *_ = cli._parse(["review-benchmark", "--write-baseline"])
     assert positional == ["review-benchmark"]
     assert model_override is None
     assert write_baseline_flag is True
     assert port_override is None
 
-    _, _, unflagged, _ = cli._parse(["review-benchmark"])
+    _, _, unflagged, *_ = cli._parse(["review-benchmark"])
     assert unflagged is False
 
 
 def test_parse_recognizes_serve_coach_port() -> None:
-    positional, model_override, _, port_override = cli._parse(["serve-coach", "--port", "9001", "--model", "qwen2.5:7b-8k"])
+    positional, model_override, _, port_override, *_ = cli._parse(["serve-coach", "--port", "9001", "--model", "qwen2.5:7b-8k"])
     assert positional == ["serve-coach"]
     assert model_override == "qwen2.5:7b-8k"
     assert port_override == 9001
 
-    _, _, _, unflagged_port = cli._parse(["serve-coach"])
+    _, _, _, unflagged_port, *_ = cli._parse(["serve-coach"])
     assert unflagged_port is None
 
 

@@ -30,3 +30,22 @@ development-time model source through `stengents.utilities.model_source`, readin
 An agent that reads your Kiln training history over the LAN HTTP API and will
 grow toward planning and Session summaries. See
 [`kiln_coach/README.md`](kiln_coach/README.md).
+
+## Strava uploader
+
+Drains Kiln's Strava upload outbox — a FIT file queued per finished Session —
+by driving a real browser through Strava's upload form via Playwright, so no
+paid Strava API dependency is needed. Meant to run periodically
+(`stengents strava-sync`), not just conversationally; validated today against
+a local mock Strava server, since real credentials aren't available in this
+environment. See [`strava_uploader/README.md`](strava_uploader/README.md).
+
+## Strava downloader
+
+The reverse of the uploader above: scrapes the athlete's recent Activities
+from Strava's training log via Playwright and records each one into Kiln's
+Strava inbox (Kiln stores them standalone, never as a Session). Meant to run
+periodically (`stengents strava-download`), not just conversationally;
+validated today against a local mock, since — like the uploader before its
+own real-site confirmation — nothing here has run against real strava.com
+yet. See [`strava_downloader/README.md`](strava_downloader/README.md).

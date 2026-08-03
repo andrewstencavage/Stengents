@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from .coding_agent import adk_driver
 from .harness import Fixture, run_fixture
@@ -21,15 +23,24 @@ def _fixture(identifier: str) -> Fixture:
 _USAGE = (
     "usage: stengents run <fixture-id> [--model <name>]\n"
     "       stengents review-benchmark [--model <name>] [--write-baseline]\n"
-    "       stengents serve-coach [--model <name>] [--port <n>]"
+    "       stengents serve-coach [--model <name>] [--port <n>]\n"
+    "       stengents strava-sync [--once] [--interval <seconds>] [--dry-run] [--max-attempts <n>]\n"
+    "       stengents strava-download [--once] [--interval <seconds>] [--dry-run] [--limit <n>]"
 )
 
 
-def _parse(arguments: list[str]) -> tuple[list[str], str | None, bool, int | None]:
+def _parse(
+    arguments: list[str],
+) -> tuple[list[str], str | None, bool, int | None, bool, int | None, bool, int | None, int | None]:
     positional: list[str] = []
     model_override: str | None = None
     write_baseline = False
     port_override: int | None = None
+    once = False
+    interval: int | None = None
+    dry_run = False
+    max_attempts: int | None = None
+    limit: int | None = None
     index = 0
     while index < len(arguments):
         token = arguments[index]
@@ -49,10 +60,35 @@ def _parse(arguments: list[str]) -> tuple[list[str], str | None, bool, int | Non
             port_override = int(arguments[index])
         elif token.startswith("--port="):
             port_override = int(token[len("--port=") :])
+        elif token == "--once":
+            once = True
+        elif token == "--interval":
+            index += 1
+            if index >= len(arguments):
+                raise ValueError("--interval requires a value")
+            interval = int(arguments[index])
+        elif token.startswith("--interval="):
+            interval = int(token[len("--interval=") :])
+        elif token == "--dry-run":
+            dry_run = True
+        elif token == "--max-attempts":
+            index += 1
+            if index >= len(arguments):
+                raise ValueError("--max-attempts requires a value")
+            max_attempts = int(arguments[index])
+        elif token.startswith("--max-attempts="):
+            max_attempts = int(token[len("--max-attempts=") :])
+        elif token == "--limit":
+            index += 1
+            if index >= len(arguments):
+                raise ValueError("--limit requires a value")
+            limit = int(arguments[index])
+        elif token.startswith("--limit="):
+            limit = int(token[len("--limit=") :])
         else:
             positional.append(token)
         index += 1
-    return positional, model_override, write_baseline, port_override
+    return positional, model_override, write_baseline, port_override, once, interval, dry_run, max_attempts, limit
 
 
 def _run_command(fixture_id: str, model_override: str | None) -> int:
@@ -182,10 +218,78 @@ def _serve_coach_command(model_override: str | None, port_override: int | None) 
     return 0
 
 
+def _strava_sync_command(
+    *,
+    once: bool,
+    interval: int | None,
+    dry_run: bool,
+    max_attempts: int | None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    # Deferred import: this path is plain Python + Playwright, no model connection at
+    # all — unlike every other command here, it must not require a preflight, so nothing
+    # model/pydantic/litellm-shaped is imported until this command actually runs.
+    from farm_system.strava_uploader.sync import DEFAULT_MAX_ATTEMPTS, run_sync
+
+    poll_interval = interval if interval is not None else 300
+    attempts_cap = max_attempts if max_attempts is not None else DEFAULT_MAX_ATTEMPTS
+    # Unset (the default) targets real strava.com; point this at a local
+    # mock_strava.serve() instance to validate the flow with no real credentials
+    # (see farm_system/strava_uploader/README.md).
+    playwright_base_url = os.environ.get("STRAVA_UPLOAD_BASE_URL") or None
+
+    while True:
+        try:
+            summary = run_sync(playwright_base_url=playwright_base_url, dry_run=dry_run, max_attempts=attempts_cap)
+        except Exception as error:  # noqa: BLE001 - a bad pass (Kiln unreachable, ...) must not kill a periodic loop
+            summary = {"error": f"{type(error).__name__}: {error}"}
+        print(json.dumps(summary))
+        if once:
+            return 1 if "error" in summary else 0
+        try:
+            sleep(poll_interval)
+        except KeyboardInterrupt:
+            return 0
+
+
+def _strava_download_command(
+    *,
+    once: bool,
+    interval: int | None,
+    dry_run: bool,
+    limit: int | None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    # Deferred import: this path is plain Python + Playwright, no model connection at
+    # all — same reasoning as `_strava_sync_command` below, and for the same reason,
+    # must not require a preflight.
+    from farm_system.strava_downloader.sync import DEFAULT_LIMIT, run_sync
+
+    poll_interval = interval if interval is not None else 300
+    scrape_limit = limit if limit is not None else DEFAULT_LIMIT
+    # Unset (the default) targets real strava.com; point this at a local
+    # mock_strava.serve() instance to validate the flow with no real credentials
+    # (see farm_system/strava_downloader/README.md).
+    playwright_base_url = os.environ.get("STRAVA_DOWNLOAD_BASE_URL") or None
+
+    while True:
+        try:
+            summary = run_sync(playwright_base_url=playwright_base_url, dry_run=dry_run, limit=scrape_limit)
+        except Exception as error:  # noqa: BLE001 - a bad pass (Kiln or Strava unreachable, ...) must not kill a periodic loop
+            summary = {"error": f"{type(error).__name__}: {error}"}
+        print(json.dumps(summary))
+        if once:
+            return 1 if "error" in summary or summary.get("scrape_error") else 0
+        try:
+            sleep(poll_interval)
+        except KeyboardInterrupt:
+            return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
     try:
-        positional, model_override, write_baseline_flag, port_override = _parse(arguments)
+        positional, model_override, write_baseline_flag, port_override, once, interval, dry_run, max_attempts, limit = _parse(arguments)
     except ValueError:
         print(_USAGE, file=sys.stderr)
         return 2
@@ -199,5 +303,9 @@ def main(argv: list[str] | None = None) -> int:
         return _review_benchmark_command(model_override, write_baseline_flag)
     if command == "serve-coach" and len(positional) == 1:
         return _serve_coach_command(model_override, port_override)
+    if command == "strava-sync" and len(positional) == 1:
+        return _strava_sync_command(once=once, interval=interval, dry_run=dry_run, max_attempts=max_attempts)
+    if command == "strava-download" and len(positional) == 1:
+        return _strava_download_command(once=once, interval=interval, dry_run=dry_run, limit=limit)
     print(_USAGE, file=sys.stderr)
     return 2
