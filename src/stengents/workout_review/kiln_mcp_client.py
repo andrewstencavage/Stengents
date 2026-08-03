@@ -47,7 +47,9 @@ import json
 import os
 import select
 import shlex
+import signal
 import subprocess
+import time
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from typing import Callable
@@ -223,15 +225,41 @@ def connect(*, timeout: float = DEFAULT_TIMEOUT) -> Iterator[KilnMcpConnection]:
     a missing ``KILN_MCP_CWD``, a failed spawn, or a failed handshake.
     """
     cwd = _cwd()  # raises before spawning if unset — nothing to clean up yet.
+    # `npm run --silent kiln` (local/combined.js) always starts its own browser
+    # HTTP server alongside the stdio MCP transport this module actually talks
+    # to — an unused side effect here, but one that must still bind *some*
+    # port. KILN_PORT/KILN_HOST are forced to an OS-assigned ephemeral
+    # loopback port for every spawn, overriding whatever the parent process's
+    # environment happens to set: one `/review/<id>` request spawns up to
+    # three of these concurrently (module docstring), so any single fixed
+    # port — including one set at the systemd-unit/deployment level — collides
+    # with itself. Found in production (issue #172 follow-up, 2026-08-01): a
+    # fixed KILN_PORT worked for exactly one concurrent spawn and then
+    # EADDRINUSE'd on the second.
+    subprocess_env = {**os.environ, "KILN_PORT": "0", "KILN_HOST": "127.0.0.1"}
     try:
         process = subprocess.Popen(
             list(_command()),
             cwd=cwd,
+            env=subprocess_env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            # DEFAULT_COMMAND is `npm run --silent kiln`, which spawns
+            # `sh -c "node local/combined.js"` as a *grandchild* — and npm
+            # routinely exits well before that grandchild does, orphaning it
+            # (still holding combined.js's HTTP listener, which keeps a Node
+            # process alive indefinitely on its own). A plain process.kill()
+            # only ever reached npm's PID, which was usually already dead by
+            # the time _terminate() ran, silently leaking the real node
+            # process forever. start_new_session puts the whole npm/sh/node
+            # tree in one process group so _terminate() can kill all of it
+            # together, however many layers deep. Found in production (issue
+            # #172 follow-up, 2026-08-01): ~300 leaked processes / 3GB RAM
+            # from one debugging session before this fix.
+            start_new_session=True,
         )
     except OSError as error:
         raise KilnMcpError(f"failed to spawn Kiln's MCP server ({_command()!r} in {cwd!r}): {error}") from error
@@ -245,8 +273,22 @@ def connect(*, timeout: float = DEFAULT_TIMEOUT) -> Iterator[KilnMcpConnection]:
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            process.kill()
+            pass
+        try:
+            pgid = os.getpgid(process.pid)
+        except ProcessLookupError:
+            pgid = None
+        if pgid is not None:
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                try:
+                    os.killpg(pgid, sig)
+                except ProcessLookupError:
+                    break  # whole group already gone
+                time.sleep(0.3)
+        try:
             process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
 
     try:
         connection = KilnMcpConnection.start(_JsonRpcStdio(process.stdin, process.stdout), timeout=timeout, on_close=_terminate)
